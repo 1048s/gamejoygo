@@ -1,3 +1,4 @@
+import random
 import pygame
 import sys
 import math
@@ -197,12 +198,11 @@ class Nexus:
 class Enemy:
     def __init__(self, path, round_num, is_boss=False):
         self.path, self.target_idx, self.is_boss = path, 0, is_boss
-        img_idx = round_num if round_num <= 19 else (round_num % 19) + 1
-        base_img = "image/boss" if is_boss else f"image/mte{img_idx}"
+        base_img = "image/mte2" if is_boss else f"image/mte{random.randint(2,15)}"
         size = (100, 100) if is_boss else (70, 70)
         self.image = load_smart_image(base_img, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = path[0]
         self.pos = pygame.Vector2(path[0])
-        self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.speed = 1 if is_boss else 2
+        self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.speed = 0.5 if is_boss else 1
     def move(self, dt, speed_mult):
         move_step = self.speed * speed_mult * (dt * 144)
         while move_step > 0 and self.target_idx < len(self.path):
