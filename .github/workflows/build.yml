@@ -1,4 +1,4 @@
-name: KaneDefense Production Build
+name: KaneDefense Ultimate Multi-Platform Build
 
 on:
   push:
@@ -33,33 +33,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip' # 이제 requirements.txt가 있으므로 캐시가 작동합니다.
 
       - name: Install Dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pygame Pillow
+          pip install -r requirements.txt
 
       - name: Build Executable
         shell: bash
         run: |
-          # code 폴더 내의 main.py를 대상으로 지정
           python -c "
           import PyInstaller.__main__; import os;
           sep = '${{ matrix.sep }}';
           
-          # 경로 설정 (사용자님의 리포지토리 구조 반영)
+          # 경로 설정 (사용자님의 리포지토리 구조: code/ 폴더 기준)
           target = os.path.join('code', 'main.py')
-          img_path = os.path.join('code', 'image')
-          snd_path = os.path.join('code', 'sound')
-          icon_path = 'icon.ico' # 루트에 있을 경우
-
+          img_src = os.path.join('code', 'image')
+          snd_src = os.path.join('code', 'sound')
+          
           opts = [target, '--onefile', '--noconsole', '--name=${{ matrix.artifact_name }}', '--clean'];
           
-          # 리소스 추가 (절대 경로 및 상대 경로 오류 방지)
-          if os.path.exists(img_path): opts.append(f'--add-data={img_path}{sep}image')
-          if os.path.exists(snd_path): opts.append(f'--add-data={snd_path}{sep}sound')
-          if os.path.exists(icon_path): opts.append(f'--icon={icon_path}')
+          # 리소스 추가
+          if os.path.exists(img_src): opts.append(f'--add-data={img_src}{sep}image')
+          if os.path.exists(snd_src): opts.append(f'--add-data={snd_src}{sep}sound')
+          if os.path.exists('icon.ico'): opts.append('--icon=icon.ico')
           
           PyInstaller.__main__.run(opts)
           "
@@ -70,42 +69,37 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/
 
-  # 2. Android 빌드 (경로 보정 버전)
+  # 2. Android 빌드
   build-android:
     name: Build for Android
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install System Dependencies
+      - name: Install Android Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git build-essential python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev openjdk-17-jdk
+          sudo apt-get install -y git build-essential python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev openjdk-17-jdk
           pip install --user --upgrade buildozer cython virtualenv
-
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          # buildozer.spec의 source.dir을 code 폴더로 인식시키기 위해 이동 후 작업하거나 spec 수정
-          # 여기서는 루트에 spec이 있다고 가정하고 실행합니다.
+          # 라이선스 수락 및 빌드
           if [ -f buildozer.spec ]; then
             sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           fi
           yes | buildozer -v android debug
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Android-APK
           path: bin/*.apk
 
-  # 3. Release 배포
+  # 3. 통합 Release 생성
   release:
     needs: [build-desktop, build-android]
     runs-on: ubuntu-latest

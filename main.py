@@ -64,6 +64,11 @@ DARK_RED, GRAY = (150, 0, 0), (50, 50, 50)
 PATH_COLOR = (200, 200, 200)
 BROWN_ALPHA = (139, 69, 19, 120) 
 
+# --- 터치 관련 변수 (안드로이드 롱터치 구현용) ---
+touch_start_time = 0
+touch_start_pos = (0, 0)
+long_press_handled = False
+
 # SCALED 플래그를 추가하여 최종 출력을 하드웨어 가속 처리 시도
 display_surface = pygame.display.set_mode(RESOLUTION, pygame.FULLSCREEN | pygame.SCALED)
 pygame.display.set_caption("케인 디펜스")
@@ -313,6 +318,7 @@ def reset_game():
     global enemies, towers, projectiles, round_start_time, game_state_mode, nexus, shop_open, jukku_confirm_open, last_spawn_time, is_break_time, shop_pos, is_dragging_shop, drag_offset, settings_open, settings_pos, is_dragging_settings, drag_offset_settings
     global ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count
     global is_overtime, overtime_start_time
+    global touch_start_time, touch_start_pos, long_press_handled
     gold = 999999 if CHEAT_MODE else 300
     round_gold_value = 15  # [복리 시스템] 마리당 지급 골드 초기값
     damage_level, hp_level, range_level, game_speed, virtual_elapsed_time, current_round = 1, 1, 1, 1, 0.0, 1
@@ -325,6 +331,7 @@ def reset_game():
     settings_pos, is_dragging_settings, drag_offset_settings = [(RESOLUTION[0] - 450) // 2, (RESOLUTION[1] - 450) // 2], False, [0, 0]
     ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count = False, False, False, None, 0
     is_overtime, overtime_start_time = False, 0
+    touch_start_time, touch_start_pos, long_press_handled = 0, (0, 0), False
     if os.path.exists(bgm_file): pygame.mixer.music.load(bgm_file); pygame.mixer.music.set_volume(BGM_VOL); pygame.mixer.music.play(-1)
 
 reset_game(); game_state_mode = STATE_START_SCREEN
@@ -373,6 +380,16 @@ while running:
     # --- 이벤트 처리 ---
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
+        
+        # [Android] 터치 이벤트 처리 (롱터치 감지 시작/종료)
+        if IS_ANDROID:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                touch_start_time = pygame.time.get_ticks()
+                touch_start_pos = pygame.mouse.get_pos()
+                long_press_handled = False
+            elif event.type == pygame.MOUSEBUTTONUP:
+                touch_start_time = 0
+
         if CHEAT_MODE and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F1: gold += 10000000
             if event.key == pygame.K_F2: damage_level += 5
@@ -431,7 +448,9 @@ while running:
                 if open_shop_btn.rect.collidepoint(mx, my): shop_open = not shop_open
                 elif open_settings_btn.rect.collidepoint(mx, my): settings_open = not settings_open
                 elif speed_btn.rect.collidepoint(mx, my): game_speed = 2 if game_speed==1 else (4 if game_speed==2 else 1); speed_btn.text = f"배속: {game_speed}x"
-                elif can_place and gold >= TOWER_DATA[selected_tower_type]["cost"]: towers.append(Tower(mx, my, selected_tower_type)); gold -= TOWER_DATA[selected_tower_type]["cost"]
+                elif can_place and gold >= TOWER_DATA[selected_tower_type]["cost"]: 
+                    towers.append(Tower(mx, my, selected_tower_type)); gold -= TOWER_DATA[selected_tower_type]["cost"]
+                    if IS_ANDROID: long_press_handled = True # 설치 직후 판매되는 것 방지
             elif game_state_mode == STATE_AIGONAN and retry_btn.rect.collidepoint(mx, my): reset_game()
         if event.type == pygame.MOUSEBUTTONUP: is_dragging_shop, is_dragging_settings = False, False
         if event.type == pygame.MOUSEMOTION:
@@ -439,6 +458,18 @@ while running:
             if is_dragging_settings: settings_pos[0], settings_pos[1] = mx + drag_offset_settings[0], my + drag_offset_settings[1]
 
     # --- 업데이트 로직 ---
+    # [Android] 롱터치 감지 (우클릭 구현)
+    if IS_ANDROID and touch_start_time > 0 and not long_press_handled:
+        curr_time = pygame.time.get_ticks()
+        if math.hypot(mx - touch_start_pos[0], my - touch_start_pos[1]) > 30: touch_start_time = 0 # 드래그 시 취소
+        elif curr_time - touch_start_time > 500: # 0.5초 이상 누름
+            long_press_handled = True
+            # UI에 가려지지 않았을 때만 타워 판매 시도
+            is_covered = (shop_open and shop_rect.collidepoint(mx, my)) or (settings_open and settings_rect.collidepoint(mx, my))
+            if not is_covered:
+                for t in towers:
+                    if t.rect.collidepoint(mx, my): tower_to_sell, sell_confirm_open = t, True; break
+
     if game_state_mode == STATE_PLAYING and not any([jukku_confirm_open, quit_confirm_open, sell_confirm_open]):
         virtual_elapsed_time += dt * game_speed; c_time = virtual_elapsed_time - round_start_time
         if current_round <= 40:
