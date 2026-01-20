@@ -1,4 +1,4 @@
-name: KaneDefense Builder(Auto Release)
+name: KaneDefense Ultimate Multi-Platform Build
 
 on:
   push:
