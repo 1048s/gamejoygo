@@ -1,4 +1,4 @@
-name: KaneDefense Multi-Platform Build
+name: Builder
 
 on:
   push:
