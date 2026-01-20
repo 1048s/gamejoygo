@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. Desktop 빌드 (누락 없이 유지)
+  # 1. Desktop 빌드 (기존 동일)
   build-desktop:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -51,7 +51,7 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/
 
-  # 2. Android 빌드 (가장 중요한 수정 섹션)
+  # 2. Android 빌드 (에러 수정 반영)
   build-android:
     name: Build for Android
     runs-on: ubuntu-22.04
@@ -85,24 +85,26 @@ jobs:
         run: |
           export PATH=$PATH:~/.local/bin
           
-          # 기존 캐시가 꼬였을 수 있으므로 설정 초기화 시도
+          # spec 초기화 및 설정
           if [ -f buildozer.spec ]; then rm buildozer.spec; fi
           buildozer init
           
-          # [핵심 수정] 아키텍처를 arm64-v8a 하나만 남기고 전부 제거
-          # 요구사항에 pygame, Pillow 명시
           sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           sed -i 's/^requirements = .*/requirements = python3,pygame,Pillow/' buildozer.spec
+          # 아키텍처 고정 (빌드 속도 및 안정성 최우선)
           sed -i 's/^#android.archs = .*/android.archs = arm64-v8a/' buildozer.spec
           sed -i 's/^#android.ndk_api = .*/android.ndk_api = 21/' buildozer.spec
           
-          # [경로 수정] 만약 소스 코드가 root에 없다면 설정
           if [ -d "code" ]; then
             sed -i 's|^source.dir = .*|source.dir = ./code|' buildozer.spec
           fi
 
-          # 빌드 전 청소 후 실행
-          buildozer android clean
+          # [에러 방지] p4a 폴더가 존재할 때만 clean 실행
+          if [ -d ".buildozer/android/platform/python-for-android" ]; then
+            buildozer android clean
+          fi
+
+          # 실제 빌드 시작
           buildozer -v android debug
 
       - name: Upload APK
@@ -111,7 +113,7 @@ jobs:
           name: Android-APK
           path: bin/*.apk
 
-  # 3. Release 배포 (누락 없이 유지)
+  # 3. Release 배포 (기본 유지)
   release:
     needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
