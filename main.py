@@ -321,7 +321,7 @@ def reset_game():
     round_start_time, enemies, towers, projectiles = 0.0, [], [], []
     game_state_mode, shop_open, settings_open, jukku_confirm_open, selected_tower_type, gif_frame_idx = STATE_PLAYING, False, False, False, "PRINCESS", 0
     last_spawn_time, is_break_time, nexus = 0, True, Nexus(enemy_path[-1])
-    shop_pos, is_dragging_shop, drag_offset = [(RESOLUTION[0] - 650) // 2, 100], False, [0, 0]
+    shop_pos, is_dragging_shop, drag_offset = [(RESOLUTION[0] - 650) // 2, int(RESOLUTION[1] * 0.15)], False, [0, 0]
     settings_pos, is_dragging_settings, drag_offset_settings = [(RESOLUTION[0] - 450) // 2, (RESOLUTION[1] - 450) // 2], False, [0, 0]
     ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count = False, False, False, None, 0
     is_overtime, overtime_start_time = False, 0
@@ -329,7 +329,7 @@ def reset_game():
 
 reset_game(); game_state_mode = STATE_START_SCREEN
 
-start_btn = Button(RESOLUTION[0]//2 - 150, RESOLUTION[1]-150, 300, 80, "게 이 시 작 !", BLUE)
+start_btn = Button(RESOLUTION[0]//2 - 150, int(RESOLUTION[1] * 0.85), 300, 80, "게 이 시 작 !", BLUE)
 
 # --- 해상도 반응형 UI 위치 설정 ---
 margin = 20
@@ -339,12 +339,12 @@ settings_btn_x = RESOLUTION[0] - settings_btn_w - margin
 speed_btn_x = settings_btn_x - speed_btn_w - margin
 shop_btn_x = speed_btn_x - shop_btn_w - margin
 
-open_shop_btn = Button(shop_btn_x, 20, shop_btn_w, 50, "상점 열기", BLUE)
-open_settings_btn = Button(settings_btn_x, 20, settings_btn_w, 50, "설정 열기", GRAY)
-speed_btn = Button(speed_btn_x, 20, speed_btn_w, 50, "배속: 1x", BLACK)
+open_shop_btn = Button(shop_btn_x, int(RESOLUTION[1] * 0.02), shop_btn_w, 50, "상점 열기", BLUE)
+open_settings_btn = Button(settings_btn_x, int(RESOLUTION[1] * 0.02), settings_btn_w, 50, "설정 열기", GRAY)
+speed_btn = Button(speed_btn_x, int(RESOLUTION[1] * 0.02), speed_btn_w, 50, "배속: 1x", BLACK)
 
-quit_btn = Button(RESOLUTION[0]-180, 20, 160, 50, "게이 종료", DARK_RED) # 엔딩 화면용
-retry_btn = Button(RESOLUTION[0]//2 - 150, RESOLUTION[1]-180, 300, 80, "다시 조이기", BLUE)
+quit_btn = Button(RESOLUTION[0]-180, int(RESOLUTION[1] * 0.02), 160, 50, "게이 종료", DARK_RED) # 엔딩 화면용
+retry_btn = Button(RESOLUTION[0]//2 - 150, int(RESOLUTION[1] * 0.8), 300, 80, "다시 조이기", BLUE)
 
 # --- 메인 루프 ---
 running = True
@@ -508,12 +508,14 @@ while running:
     display_surface.blit(background_image, (0, 0)) if background_image else display_surface.fill(BLACK)
     if game_state_mode == STATE_START_SCREEN:
         overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
-        h_rect = pygame.Rect(RESOLUTION[0]//2-500, 50, 1000, 750); pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
+        panel_w, panel_h = int(RESOLUTION[0] * 0.8), int(RESOLUTION[1] * 0.8)
+        h_rect = pygame.Rect((RESOLUTION[0] - panel_w)//2, (RESOLUTION[1] - panel_h)//2, panel_w, panel_h)
+        pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
         title_surf = get_text_surface("케인 디펜스 - GayDefense", FONT_TITLE, BLACK)
-        display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, 100))
+        display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, h_rect.y + int(panel_h * 0.1)))
         helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매"]
         for i, txt in enumerate(helps):
-            display_surface.blit(get_text_surface(txt, FONT_HELP, BLACK), (h_rect.x+100, 250 + i*70))
+            display_surface.blit(get_text_surface(txt, FONT_HELP, BLACK), (h_rect.x + int(panel_w * 0.1), h_rect.y + int(panel_h * 0.25) + i * int(panel_h * 0.08)))
         start_btn.draw(display_surface)
     elif game_state_mode == STATE_PLAYING:
         pygame.draw.lines(display_surface, PATH_COLOR, False, enemy_path, 50)
@@ -524,8 +526,8 @@ while running:
         for e in enemies: e.draw(display_surface)
         for p in projectiles: p.draw(display_surface)
         nexus.draw(display_surface); open_shop_btn.draw(display_surface); open_settings_btn.draw(display_surface); speed_btn.draw(display_surface)
-        display_surface.blit(get_text_surface(f"GOLD: {gold} (마리당: {round_gold_value}G) | 공격 Lv: {damage_level} | HP Lv: {hp_level} | 사거리 Lv: {range_level}", FONT_UI, BLACK), (30, 30))
-        display_surface.blit(get_text_surface(f"{f'라운드 {current_round} 조이고 ' if not is_break_time else '정리좀하고(%s초쯤)' % int(time_left)}| 남은 시간: {int(time_left)}초", FONT_UI, DARK_RED), (30, 70))
+        display_surface.blit(get_text_surface(f"GOLD: {gold} (마리당: {round_gold_value}G) | 공격 Lv: {damage_level} | HP Lv: {hp_level} | 사거리 Lv: {range_level}", FONT_UI, BLACK), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.03)))
+        display_surface.blit(get_text_surface(f"{f'라운드 {current_round} 조이고 ' if not is_break_time else '정리좀하고(%s초쯤)' % int(time_left)}| 남은 시간: {int(time_left)}초", FONT_UI, DARK_RED), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.08)))
         if shop_open:
             pygame.draw.rect(display_surface, (230,230,230), shop_rect, border_radius=20); pygame.draw.rect(display_surface, (150,150,150), sdb, border_radius=20); close_shop_btn.draw(display_surface)
             draw_text_with_outline(display_surface, "★ 타워조이고 ★", FONT_SHOP_TITLE, (shop_pos[0]+20, shop_pos[1]+15), WHITE, BLACK)
@@ -561,7 +563,7 @@ while running:
             gif_frame_idx = (gif_frame_idx + 1) % len(aigonan_gif_frames)
             img = aigonan_gif_frames[gif_frame_idx]; display_surface.blit(img, img.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2)))
         elif mte21_image: display_surface.blit(mte21_image, mte21_image.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2 - 50)))
-        display_surface.blit(get_text_surface("아이고난!", FONT_GAMEOVER, RED), (RESOLUTION[0]//2-200, 100)); retry_btn.draw(display_surface)
+        display_surface.blit(get_text_surface("아이고난!", FONT_GAMEOVER, RED), (RESOLUTION[0]//2-200, int(RESOLUTION[1]*0.15))); retry_btn.draw(display_surface)
     if sell_confirm_open:
         sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (sx, sy, 500, 250), border_radius=20)
         display_surface.blit(get_text_surface(f"이 타워를 {int(tower_to_sell.cost*0.7)}G에 파냐맨이야?", FONT_UI, BLACK), (sx+80, sy+60))

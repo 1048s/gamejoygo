@@ -1,4 +1,4 @@
-name: KaneDefense Ultimate Multi-Platform Build
+name: KaneDefense Production Build
 
 on:
   push:
@@ -33,24 +33,34 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: Install Dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller pygame Pillow
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Build Executable
         shell: bash
         run: |
+          # code 폴더 내의 main.py를 대상으로 지정
           python -c "
           import PyInstaller.__main__; import os;
           sep = '${{ matrix.sep }}';
-          opts = ['main.py', '--onefile', '--noconsole', '--name=${{ matrix.artifact_name }}', 
-                  f'--add-data=image{sep}image', f'--add-data=sound{sep}sound', '--clean'];
-          if os.path.exists('icon.ico'): opts.append('--icon=icon.ico');
+          
+          # 경로 설정 (사용자님의 리포지토리 구조 반영)
+          target = os.path.join('code', 'main.py')
+          img_path = os.path.join('code', 'image')
+          snd_path = os.path.join('code', 'sound')
+          icon_path = 'icon.ico' # 루트에 있을 경우
+
+          opts = [target, '--onefile', '--noconsole', '--name=${{ matrix.artifact_name }}', '--clean'];
+          
+          # 리소스 추가 (절대 경로 및 상대 경로 오류 방지)
+          if os.path.exists(img_path): opts.append(f'--add-data={img_path}{sep}image')
+          if os.path.exists(snd_path): opts.append(f'--add-data={snd_path}{sep}sound')
+          if os.path.exists(icon_path): opts.append(f'--icon={icon_path}')
+          
           PyInstaller.__main__.run(opts)
           "
 
@@ -58,9 +68,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-desktop
-          path: dist/${{ matrix.artifact_name }}
+          path: dist/
 
-  # 2. Android 빌드 (캐싱 및 경로 강제 지정 버전)
+  # 2. Android 빌드 (경로 보정 버전)
   build-android:
     name: Build for Android
     runs-on: ubuntu-latest
@@ -73,33 +83,20 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: .buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git build-essential patch python3-dev zip unzip unzip ffmpeg \
-          libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev \
-          libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev \
-          libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev \
-          libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev \
-          openjdk-17-jdk autoconf libtool pkg-config
+          sudo apt-get install -y git build-essential python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev openjdk-17-jdk
           pip install --user --upgrade buildozer cython virtualenv
 
       - name: Build with Buildozer
         run: |
-          # 1. PATH 설정 (git 및 buildozer 보장)
-          export PATH=$PATH:~/.local/bin:/usr/bin
-          
-          # 2. 라이선스 자동 수락 설정 강제 삽입
-          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-
-          # 3. 빌드 실행
+          export PATH=$PATH:~/.local/bin
+          # buildozer.spec의 source.dir을 code 폴더로 인식시키기 위해 이동 후 작업하거나 spec 수정
+          # 여기서는 루트에 spec이 있다고 가정하고 실행합니다.
+          if [ -f buildozer.spec ]; then
+            sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          fi
           yes | buildozer -v android debug
 
       - name: Upload APK
@@ -116,7 +113,6 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
