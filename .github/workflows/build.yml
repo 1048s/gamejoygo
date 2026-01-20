@@ -60,9 +60,10 @@ jobs:
           path: dist/${{ matrix.artifact_name }}
 
   # 2. Android 빌드 (순수 명령어로 구성)
+  # 2. Android 빌드 (Spec 파일 유효성 검사 추가)
   build-android:
     name: Build for Android
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -81,14 +82,14 @@ jobs:
 
       - name: Build with Buildozer
         run: |
-          # buildozer.spec 파일이 없으면 에러가 나므로, 없을 경우에만 기본 파일을 생성합니다.
-          if [ ! -f buildozer.spec ]; then
-            ~/.local/bin/buildozer init
-            # 기본 설정 수정 (pygame 추가 등)
-            sed -i 's/requirements = python3,kivy/requirements = python3,pygame,Pillow/g' buildozer.spec
+          # buildozer.spec이 파이썬 코드로 오염되었는지 확인하고, 헤더가 없으면 에러를 출력합니다.
+          if ! grep -q "\[app\]" buildozer.spec; then
+            echo "Error: buildozer.spec is missing [app] section header!"
+            exit 1
           fi
-          # CI 환경에서 자동 수락하며 빌드
-          yes | ~/.local/bin/buildozer -v android debug
+          # CI 환경에서 SDK/NDK 자동 다운로드 및 빌드 진행
+          ~/.local/bin/buildozer -v android debug
+        # 주의: 첫 빌드 시 SDK 등을 다운로드하므로 15~20분 정도 소요될 수 있습니다.
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
