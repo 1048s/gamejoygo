@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. Desktop 빌드 (기존 동일)
+  # 1. Desktop 빌드 (누락 없이 유지)
   build-desktop:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -51,7 +51,7 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/
 
-  # 2. Android 빌드 (컴파일 최적화 및 아키텍처 제한)
+  # 2. Android 빌드 (가장 중요한 수정 섹션)
   build-android:
     name: Build for Android
     runs-on: ubuntu-22.04
@@ -84,17 +84,25 @@ jobs:
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # 1. 아키텍처를 arm64-v8a 하나로 제한 (빌드 시간 단축 및 오류 감소)
-          sed -i 's/^android.archs = .*/android.archs = arm64-v8a/' buildozer.spec
+          # 기존 캐시가 꼬였을 수 있으므로 설정 초기화 시도
+          if [ -f buildozer.spec ]; then rm buildozer.spec; fi
+          buildozer init
           
-          # 2. 필수 설정 주입
+          # [핵심 수정] 아키텍처를 arm64-v8a 하나만 남기고 전부 제거
+          # 요구사항에 pygame, Pillow 명시
           sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           sed -i 's/^requirements = .*/requirements = python3,pygame,Pillow/' buildozer.spec
+          sed -i 's/^#android.archs = .*/android.archs = arm64-v8a/' buildozer.spec
+          sed -i 's/^#android.ndk_api = .*/android.ndk_api = 21/' buildozer.spec
           
-          # 3. 로그 레벨 조정 및 컴파일 병렬화 제한 (메모리 부족 방지)
-          # 빌드 프로세스가 멈추는 것을 방지하기 위해 단일 프로세스로 실행 시도
+          # [경로 수정] 만약 소스 코드가 root에 없다면 설정
+          if [ -d "code" ]; then
+            sed -i 's|^source.dir = .*|source.dir = ./code|' buildozer.spec
+          fi
+
+          # 빌드 전 청소 후 실행
+          buildozer android clean
           buildozer -v android debug
 
       - name: Upload APK
@@ -103,7 +111,7 @@ jobs:
           name: Android-APK
           path: bin/*.apk
 
-  # 3. Release 배포 (기존 동일)
+  # 3. Release 배포 (누락 없이 유지)
   release:
     needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
