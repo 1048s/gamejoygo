@@ -47,7 +47,7 @@ STATE_AIGONAN = 1
 game_state_mode = STATE_START_SCREEN
 
 WHITE, BLACK, RED, BLUE, GREEN = (255, 255, 255), (0, 0, 0), (255, 0, 0), (0, 0, 255), (0, 255, 0)
-YELLOW, PURPLE, CYAN = (255, 255, 0), (128, 0, 128), (0, 255, 255)
+YELLOW, PURPLE, CYAN, BROWN = (255, 255, 0), (128, 0, 128), (0, 255, 255), (139, 69, 19)
 DARK_RED, GRAY = (150, 0, 0), (50, 50, 50)
 PATH_COLOR = (200, 200, 200)
 BROWN_ALPHA = (139, 69, 19, 120) 
@@ -324,7 +324,7 @@ while running:
     
     shop_rect = pygame.Rect(shop_pos[0], shop_pos[1], 650, 500); sdb = pygame.Rect(shop_pos[0], shop_pos[1], 650, 60)
     close_shop_btn = Button(shop_pos[0] + 580, shop_pos[1] + 10, 60, 40, "X", GRAY)
-    tower_btns = [Button(shop_pos[0]+25, shop_pos[1]+100, 140, 50, "이걸 왜쏴 ㅋㅋ", BLUE, "PRINCESS"), Button(shop_pos[0]+175, shop_pos[1]+100, 140, 50, "집게이사장", PURPLE, "DUCHESS"), Button(shop_pos[0]+325, shop_pos[1]+100, 140, 50, "-3000로베로스", BLACK, "CANON"), Button(shop_pos[0]+475, shop_pos[1]+100, 140, 50, "지누텔라", YELLOW, "JINUTELLA")]
+    tower_btns = [Button(shop_pos[0]+25, shop_pos[1]+100, 140, 50, "이걸 왜쏴 ㅋㅋ", BLUE, "PRINCESS"), Button(shop_pos[0]+175, shop_pos[1]+100, 140, 50, "집게이사장", PURPLE, "DUCHESS"), Button(shop_pos[0]+325, shop_pos[1]+100, 140, 50, "-3000로베로스", BLACK, "CANON"), Button(shop_pos[0]+475, shop_pos[1]+100, 140, 50, "지누텔라", BROWN, "JINUTELLA")]
     up_dmg_btn = Button(shop_pos[0]+30, shop_pos[1]+220, 280, 60, f"공격 강화 ({damage_gold_val}G)", RED)
     up_hp_btn = Button(shop_pos[0]+340, shop_pos[1]+220, 280, 60, f"체력 UP ({hp_gold_val}G)", GREEN)
     up_range_btn = Button(shop_pos[0]+30, shop_pos[1]+300, 590, 60, f"사거리 증가 ({range_gold_val}G)", CYAN)
@@ -465,8 +465,9 @@ while running:
             e.move(dt, game_speed)
             if e.hp <= 0: 
                 gold += round_gold_value * (5 if e.is_boss else 1) # [복리] 적용된 골드 지급
-                if bbolong_sound: bbolong_sound.play(); 
-                elif e.is_boss and oh_sound: oh_sound.play()
+                if e.is_boss:
+                    if aigonan_sound: aigonan_sound.play()
+                elif bbolong_sound: bbolong_sound.play()
                 enemies.remove(e)
             elif e.target_idx >= len(enemy_path): 
                 nexus.hp -= 2000 if e.is_boss else 1000; enemies.remove(e)
@@ -477,9 +478,9 @@ while running:
     if game_state_mode == STATE_START_SCREEN:
         overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
         h_rect = pygame.Rect(RESOLUTION[0]//2-500, 50, 1000, 750); pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
-        title_surf = get_text_surface("케인(한화) 디펜스(수비)", FONT_TITLE, BLACK)
+        title_surf = get_text_surface("케인 디펜스 - GayDefense", FONT_TITLE, BLACK)
         display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, 100))
-        helps = [f"● 치트(헉) 상태: {'활성화' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 최종 보스전 (보스 10마리)", "● 지누텔라 타워: 광역 갈색 이펙트 공격", "● 방음부스 체력 0 되면 게임 종료", "● 타워 우클릭: 판매 확인창"]
+        helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매"]
         for i, txt in enumerate(helps):
             display_surface.blit(get_text_surface(txt, FONT_HELP, BLACK), (h_rect.x+100, 250 + i*70))
         start_btn.draw(display_surface)

@@ -34,7 +34,7 @@ def build_game():
     if os.path.exists(ICON_PATH):
         # .ico 파일이 아니라면 PyInstaller가 변환을 시도하거나 오류가 날 수 있음
         # 안전하게 아이콘 옵션은 주석 처리하거나 .ico 파일을 준비하는 것이 좋습니다.
-        # opts.append(f'--icon={ICON_PATH}')
+        opts.append(f'--icon={ICON_PATH}')
         pass
 
     # 빌드 실행
