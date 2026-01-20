@@ -75,19 +75,33 @@ if IS_ANDROID:
 clock = pygame.time.Clock()
 
 # --- 폰트 설정 ---
-FONT_HP = pygame.font.SysFont("malgungothic", 16, bold=True)
-FONT_SHOP_TITLE = pygame.font.SysFont("malgungothic", 30, bold=True) 
-FONT_BTN_SMALL = pygame.font.SysFont("malgungothic", 18, bold=True)
-FONT_BTN_LARGE = pygame.font.SysFont("malgungothic", 22, bold=True)
-# [성능 개선] 게임 루프 내에서 폰트 객체를 생성하는 것을 방지하기 위해 미리 정의
-FONT_COOLDOWN = pygame.font.SysFont("malgungothic", 14, bold=True)
-FONT_UI = pygame.font.SysFont("malgungothic", 25, bold=True)
-FONT_DMG_TEXT = pygame.font.SysFont("malgungothic", 15, bold=True)
-FONT_TITLE = pygame.font.SysFont("malgungothic", 60, bold=True)
-FONT_HELP = pygame.font.SysFont("malgungothic", 30)
-FONT_GAMEOVER = pygame.font.SysFont("malgungothic", 100, bold=True)
-FONT_POPUP_TITLE = pygame.font.SysFont("malgungothic", 30, bold=True)
-FONT_CLEAR = pygame.font.SysFont("malgungothic", 100, True)
+# 안드로이드 호환성을 위해 폰트 파일을 직접 로드합니다.
+# 'font' 폴더에 D2Coding.ttf 같은 폰트 파일을 추가해야 합니다.
+FONT_FILE = resource_path("font/D2Coding.ttf")
+
+def create_font(size, bold=False, italic=False):
+    """폰트 파일을 로드하고, 볼드/이탤릭 속성을 설정하는 헬퍼 함수"""
+    try:
+        font = pygame.font.Font(FONT_FILE, size)
+        font.set_bold(bold)
+        font.set_italic(italic)
+        return font
+    except pygame.error:
+        print(f"Warning: Font file not found at {FONT_FILE}. Falling back to system font.")
+        return pygame.font.SysFont("malgungothic", size, bold, italic)
+
+FONT_HP = create_font(16, bold=True)
+FONT_SHOP_TITLE = create_font(30, bold=True)
+FONT_BTN_SMALL = create_font(18, bold=True)
+FONT_BTN_LARGE = create_font(22, bold=True)
+FONT_COOLDOWN = create_font(14, bold=True)
+FONT_UI = create_font(25, bold=True)
+FONT_DMG_TEXT = create_font(15, bold=True)
+FONT_TITLE = create_font(60, bold=True)
+FONT_HELP = create_font(30)
+FONT_GAMEOVER = create_font(100, bold=True)
+FONT_POPUP_TITLE = create_font(30, bold=True)
+FONT_CLEAR = create_font(100, bold=True)
 
 # --- 성능 최적화를 위한 캐시 ---
 TEXT_CACHE = {}

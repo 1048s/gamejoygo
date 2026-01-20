@@ -1,4 +1,4 @@
-name: KaneDefense Multi-Platform Build
+name: KaneDefense Ultimate Multi-Platform Build
 
 on:
   push:
@@ -33,6 +33,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Install Dependencies
         shell: bash
@@ -59,10 +60,10 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/${{ matrix.artifact_name }}
 
-  # 2. Android 빌드 (Git 설치 및 라이선스 수락 강제화)
+  # 2. Android 빌드 (캐싱 및 경로 강제 지정 버전)
   build-android:
     name: Build for Android
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -72,26 +73,40 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          # git을 명시적으로 재설치하여 경로 문제를 해결합니다.
-          sudo apt-get install -y git build-essential python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
-          sudo apt-get install -y libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev
-          sudo apt-get install -y openjdk-17-jdk
+          sudo apt-get install -y git build-essential patch python3-dev zip unzip unzip ffmpeg \
+          libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev \
+          libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev \
+          libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev \
+          libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev \
+          openjdk-17-jdk autoconf libtool pkg-config
           pip install --user --upgrade buildozer cython virtualenv
 
       - name: Build with Buildozer
         run: |
-          # 1. buildozer.spec 내의 라이선스 자동 수락 설정 강제 삽입
-          # 이 설정이 있으면 buildozer가 SDK 설치 시 질문을 던지지 않습니다.
-          if [ -f buildozer.spec ]; then
-            sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          fi
+          # 1. PATH 설정 (git 및 buildozer 보장)
+          export PATH=$PATH:~/.local/bin:/usr/bin
+          
+          # 2. 라이선스 자동 수락 설정 강제 삽입
+          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
 
-          # 2. 빌드 실행 (PATH 보강)
-          export PATH=$PATH:~/.local/bin
+          # 3. 빌드 실행
           yes | buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: bin/*.apk
 
   # 3. Release 배포
   release:

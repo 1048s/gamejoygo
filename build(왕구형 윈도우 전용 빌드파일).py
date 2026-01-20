@@ -25,6 +25,7 @@ def build_game():
         # 리소스 폴더 추가 (image 폴더와 sound 폴더를 포함)
         '--add-data=image;image',   
         '--add-data=sound;sound',
+        '--add-data=font;font',
         
         # 필요한 라이브러리 강제 포함 (필요 시)
         '--clean',
