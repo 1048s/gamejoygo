@@ -1,4 +1,4 @@
-name: KaneDefense Ultimate Path Fix
+name: KaneDefense Builder(Auto Release)
 
 on:
   push:
@@ -38,9 +38,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pygame Pillow
-          # requirements.txt가 있으면 설치, 없으면 통과
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
 
       - name: Build Executable
         shell: bash
@@ -49,30 +47,16 @@ jobs:
           import PyInstaller.__main__; import os; import sys;
           sep = '${{ matrix.sep }}';
           
-          # 1. 파일 경로 자동 탐색 로직 (루트 또는 code 폴더 확인)
-          possible_targets = ['main.py', os.path.join('code', 'main.py')]
-          target = None
-          for t in possible_targets:
-              if os.path.exists(t):
-                  target = t
-                  break
-          
-          if not target:
-              print('--- Error: main.py not found in root or code/ folder! ---')
-              os.system('ls -R') # 디버깅을 위해 전체 구조 출력
-              sys.exit(1)
-          
-          print(f'--- Starting build for: {target} ---')
-          
-          # 2. 리소스 경로 설정
-          base_dir = os.path.dirname(target) if os.path.dirname(target) else '.'
-          img_src = os.path.join(base_dir, 'image')
-          snd_src = os.path.join(base_dir, 'sound')
+          # 파일 경로 확인
+          target = 'main.py'
+          if not os.path.exists(target):
+              print('Error: main.py not found in root!'); sys.exit(1)
           
           opts = [target, '--onefile', '--noconsole', '--name=${{ matrix.artifact_name }}', '--clean'];
           
-          if os.path.exists(img_src): opts.append(f'--add-data={img_src}{sep}image')
-          if os.path.exists(snd_src): opts.append(f'--add-data={snd_src}{sep}sound')
+          # 리소스 추가
+          if os.path.exists('image'): opts.append(f'--add-data=image{sep}image')
+          if os.path.exists('sound'): opts.append(f'--add-data=sound{sep}sound')
           if os.path.exists('icon.ico'): opts.append('--icon=icon.ico')
           
           PyInstaller.__main__.run(opts)
@@ -82,4 +66,57 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-desktop
-          path: dist/
+          path: dist/${{ matrix.artifact_name }}
+
+  # 2. Android 빌드
+  build-android:
+    name: Build for Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential patch python3-dev zip unzip ffmpeg \
+          libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev \
+          openjdk-17-jdk autoconf libtool pkg-config
+          pip install --user --upgrade buildozer cython virtualenv
+
+      - name: Build with Buildozer
+        run: |
+          export PATH=$PATH:~/.local/bin:/usr/bin
+          # 라이선스 자동 수락 강제 적용
+          sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          yes | buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: bin/*.apk
+
+  # 3. Release 배포
+  release:
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            **/*.exe
+            **/*-Linux
+            **/*-Mac
+            **/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
