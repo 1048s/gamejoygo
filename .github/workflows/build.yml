@@ -1,4 +1,4 @@
-name: KaneDefense Ultimate Multi-Platform Build
+name: KaneDefense Ultimate Final Build
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. Desktop 빌드 (Windows, Linux, macOS)
+  # 1. Desktop 빌드
   build-desktop:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -34,39 +34,36 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install Build Tools (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libjpeg-dev zlib1g-dev libpng-dev
+
       - name: Install Dependencies
-        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install pygame Pillow pyinstaller
 
       - name: Build Executable
         shell: bash
         run: |
-          python -c "
-          import PyInstaller.__main__; import os; import sys;
-          sep = '${{ matrix.sep }}';
+          # 현재 경로의 모든 파일을 출력하여 확인 (디버깅)
+          ls -R
+          # main.py가 있는 위치를 강제로 탐색하여 빌드
+          TARGET_FILE=$(find . -name "main.py" | head -n 1)
+          echo "Found target: $TARGET_FILE"
           
-          # 파일 경로 확인
-          target = 'main.py'
-          if not os.path.exists(target):
-              print('Error: main.py not found in root!'); sys.exit(1)
-          
-          opts = [target, '--onefile', '--noconsole', '--name=${{ matrix.artifact_name }}', '--clean'];
-          
-          # 리소스 추가
-          if os.path.exists('image'): opts.append(f'--add-data=image{sep}image')
-          if os.path.exists('sound'): opts.append(f'--add-data=sound{sep}sound')
-          if os.path.exists('icon.ico'): opts.append('--icon=icon.ico')
-          
-          PyInstaller.__main__.run(opts)
-          "
+          python -m PyInstaller --onefile --noconsole --name "${{ matrix.artifact_name }}" \
+          --add-data "image${{ matrix.sep }}image" \
+          --add-data "sound${{ matrix.sep }}sound" \
+          --clean "$TARGET_FILE"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-desktop
-          path: dist/${{ matrix.artifact_name }}
+          path: dist/
 
   # 2. Android 빌드
   build-android:
@@ -76,24 +73,25 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install System Dependencies
+      - name: Install Android Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git build-essential patch python3-dev zip unzip ffmpeg \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev \
-          openjdk-17-jdk autoconf libtool pkg-config
-          pip install --user --upgrade buildozer cython virtualenv
+          libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev \
+          libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev \
+          libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev \
+          openjdk-17-jdk autoconf libtool pkg-config libjpeg-dev
+          pip install --user --upgrade buildozer cython virtualenv Pillow
 
       - name: Build with Buildozer
         run: |
-          export PATH=$PATH:~/.local/bin:/usr/bin
-          # 라이선스 자동 수락 강제 적용
+          export PATH=$PATH:~/.local/bin
+          # 라이선스 자동 수락
+          if [ ! -f buildozer.spec ]; then buildozer init; fi
           sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          # requirements에 Pillow 명시 확인
+          sed -i 's/requirements = python3,kivy/requirements = python3,pygame,Pillow/g' buildozer.spec
           yes | buildozer -v android debug
 
       - name: Upload APK
@@ -102,7 +100,7 @@ jobs:
           name: Android-APK
           path: bin/*.apk
 
-  # 3. Release 배포
+  # 3. Release 생성
   release:
     needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
