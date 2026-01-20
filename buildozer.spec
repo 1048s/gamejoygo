@@ -42,5 +42,8 @@ android.minapi = 21
 # (str) Android NDK version to use
 android.ndk = 25b
 
+# (str) Android SDK build-tools version to use (이 줄을 추가하거나 수정하세요)
+android.sdk_buildtools = 33.0.0
+
 # (bool) Use --private data storage (True) or --dir public storage (False)
 android.private_storage = True
