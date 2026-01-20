@@ -47,3 +47,7 @@ android.sdk_buildtools = 33.0.0
 
 # (bool) Use --private data storage (True) or --dir public storage (False)
 android.private_storage = True
+
+# (bool) If True, then skip trying to update the Android sdk
+# This can be useful to avoid issues if the 
+android.accept_sdk_license = True

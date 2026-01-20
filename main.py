@@ -6,6 +6,18 @@ import os
 import argparse
 from PIL import Image
 
+# --- OS 감지 (안드로이드 여부 확인) ---
+IS_ANDROID = False
+if sys.platform == 'android':
+    IS_ANDROID = True
+try:
+    import android
+    IS_ANDROID = True
+except ImportError:
+    pass
+if 'ANDROID_ARGUMENT' in os.environ:
+    IS_ANDROID = True
+
 # --- 실행 인수 처리 (치트 활성화) ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--cheat", action="store_true", help="치트 모드를 활성화합니다.")
@@ -55,6 +67,11 @@ BROWN_ALPHA = (139, 69, 19, 120)
 # SCALED 플래그를 추가하여 최종 출력을 하드웨어 가속 처리 시도
 display_surface = pygame.display.set_mode(RESOLUTION, pygame.FULLSCREEN | pygame.SCALED)
 pygame.display.set_caption("케인 디펜스")
+
+# 안드로이드 환경이면 마우스 커서 숨기기 (터치 스크린 모드)
+if IS_ANDROID:
+    pygame.mouse.set_visible(False)
+
 clock = pygame.time.Clock()
 
 # --- 폰트 설정 ---

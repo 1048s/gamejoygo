@@ -59,7 +59,7 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/${{ matrix.artifact_name }}
 
-  # 2. Android 빌드 (라이선스 자동 승인 및 버전 고정)
+  # 2. Android 빌드 (Git 설치 및 라이선스 수락 강제화)
   build-android:
     name: Build for Android
     runs-on: ubuntu-22.04
@@ -72,37 +72,26 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Android Dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
+          # git을 명시적으로 재설치하여 경로 문제를 해결합니다.
+          sudo apt-get install -y git build-essential python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
           sudo apt-get install -y libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev
-          # 라이선스 자동 동의를 위한 도구 설치
           sudo apt-get install -y openjdk-17-jdk
           pip install --user --upgrade buildozer cython virtualenv
 
-      - name: Auto Accept Android Licenses
-        run: |
-          # SDK Manager를 통해 모든 라이선스 자동 승인
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
-          # Buildozer가 설치한 SDK 위치로 이동하여 라이선스 승인 스크립트 실행
-          # (첫 실행 시에는 경로가 없을 수 있으므로 Buildozer가 구조를 만든 후 재시도하도록 구성)
-          
       - name: Build with Buildozer
-        env:
-          # 가상 환경 내 경로 설정
-          PATH: $PATH:/home/runner/.local/bin
         run: |
-          # 1. 빌드 환경 초기화 (SDK 구조 생성)
-          ~/.local/bin/buildozer android pydeps || true
-          
-          # 2. 라이선스 강제 동의 (핵심 해결책)
-          yes | sdkmanager --sdk_root=/home/runner/.buildozer/android/platform/android-sdk --licenses || true
-          
-          # 3. 실제 빌드 진행
-          # --debug 모드와 -v(verbose)를 사용하여 상세 로그 확인
-          yes | ~/.local/bin/buildozer -v android debug
+          # 1. buildozer.spec 내의 라이선스 자동 수락 설정 강제 삽입
+          # 이 설정이 있으면 buildozer가 SDK 설치 시 질문을 던지지 않습니다.
+          if [ -f buildozer.spec ]; then
+            sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          fi
+
+          # 2. 빌드 실행 (PATH 보강)
+          export PATH=$PATH:~/.local/bin
+          yes | buildozer -v android debug
 
   # 3. Release 배포
   release:
