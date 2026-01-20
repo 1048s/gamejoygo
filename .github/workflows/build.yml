@@ -1,4 +1,4 @@
-name: KaneDefense Ultimate Fixed Build
+name: KaneDefense Ultimate Release Build
 
 on:
   push:
@@ -7,7 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. Desktop 빌드 (누락 없이 유지)
+  # ---------------------------------------------------------
+  # 1. Desktop 빌드 (Windows, Linux, macOS)
+  # ---------------------------------------------------------
   build-desktop:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -24,34 +26,43 @@ jobs:
           - os: macos-latest
             artifact_name: KaneDefense-Mac
             sep: ":"
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pygame Pillow pyinstaller
+
       - name: Build Executable
         shell: bash
         run: |
+          # main.py 탐색
           TARGET_FILE=$(find . -maxdepth 2 -name "main.py" | head -n 1)
           EXT=""
           if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=".exe"; fi
+          
           python -m PyInstaller --onefile --noconsole --name "${{ matrix.artifact_name }}$EXT" \
           --add-data "image${{ matrix.sep }}image" \
           --add-data "sound${{ matrix.sep }}sound" \
           --clean "$TARGET_FILE"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-desktop
           path: dist/
 
-  # 2. Android 빌드 (라이선스 및 버전 고정 수정)
+  # ---------------------------------------------------------
+  # 2. Android 빌드 (64비트 최적화 및 라이선스 자동 수락)
+  # ---------------------------------------------------------
   build-android:
     name: Build for Android
     runs-on: ubuntu-22.04
@@ -79,32 +90,37 @@ jobs:
           libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl libgdbm-dev \
           libgdbm-compat-dev liblzma-dev libreadline-dev libncursesw5-dev libffi-dev uuid-dev lzma lzma-dev \
           autoconf libtool pkg-config libjpeg-dev libwebp-dev
+          
+          # p4a 호환성을 위한 setuptools 버전 제한 및 필드 도구 설치
           pip install --user --upgrade "setuptools<60.0.0" "buildozer>=1.5.0" "Cython<3.0" virtualenv Pillow
 
       - name: Build with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
           
-          if [ -f buildozer.spec ]; then rm buildozer.spec; fi
+          # 1. 이전 설정 및 빌드 캐시 강제 삭제 (충돌 방지)
+          rm -f buildozer.spec
+          rm -rf .buildozer/android/platform/build-arm64-v8a_armeabi-v7a
+          
           buildozer init
           
-          # [핵심 수정] 라이선스 수락 및 버전 고정
+          # 2. buildozer.spec 필수 설정 주입
           sed -i 's/android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/^#android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec
-          sed -i 's/^#android.api = .*/android.api = 34/' buildozer.spec
-          sed -i 's/^#android.ndk_api = .*/android.ndk_api = 21/' buildozer.spec
-          
           sed -i 's/^requirements = .*/requirements = python3,pygame,Pillow/' buildozer.spec
           sed -i 's/^#android.archs = .*/android.archs = arm64-v8a/' buildozer.spec
+          sed -i 's/^#android.api = .*/android.api = 34/' buildozer.spec
+          sed -i 's/^#android.minapi = .*/android.minapi = 21/' buildozer.spec
+          sed -i 's/^#android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec
           
+          # 3. 소스 디렉토리 체크
           if [ -d "code" ]; then
             sed -i 's|^source.dir = .*|source.dir = ./code|' buildozer.spec
           fi
 
-          # SDK 매니저를 통한 강제 라이선스 동의 (buildozer 실행 전)
+          # 4. 안드로이드 SDK 매니저 환경 준비
           mkdir -p ~/.android && touch ~/.android/repositories.cfg
           
-          # 실제 빌드 (yes 명령어를 통해 모든 프롬프트 강제 수락)
+          # 5. 빌드 실행 (모든 프롬프트에 자동 yes 응답)
           yes | buildozer -v android debug
 
       - name: Upload APK
@@ -113,7 +129,9 @@ jobs:
           name: Android-APK
           path: bin/*.apk
 
-  # 3. Release 배포 (누락 없이 유지)
+  # ---------------------------------------------------------
+  # 3. Release 배포 (Tag 푸시 시 실행)
+  # ---------------------------------------------------------
   release:
     needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
@@ -123,6 +141,7 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
