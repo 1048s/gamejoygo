@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: # 여기서 수동으로 실행합니다.
 
 jobs:
   # ---------------------------------------------------------
@@ -20,13 +20,15 @@ jobs:
           - os: windows-latest
             artifact_name: KaneDefense-Win
             sep: ";"
+            ext: ".exe"
           - os: ubuntu-latest
             artifact_name: KaneDefense-Linux
             sep: ":"
+            ext: ""
           - os: macos-latest
             artifact_name: KaneDefense-Mac
             sep: ":"
-
+            ext: ""
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -44,12 +46,8 @@ jobs:
       - name: Build Executable
         shell: bash
         run: |
-          # main.py 탐색
           TARGET_FILE=$(find . -maxdepth 2 -name "main.py" | head -n 1)
-          EXT=""
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then EXT=".exe"; fi
-          
-          python -m PyInstaller --onefile --noconsole --name "${{ matrix.artifact_name }}$EXT" \
+          python -m PyInstaller --onefile --noconsole --name "${{ matrix.artifact_name }}${{ matrix.ext }}" \
           --add-data "image${{ matrix.sep }}image" \
           --add-data "sound${{ matrix.sep }}sound" \
           --clean "$TARGET_FILE"
@@ -60,26 +58,37 @@ jobs:
           name: ${{ matrix.os }}-desktop
           path: dist/
 
-
   # ---------------------------------------------------------
-  # 2. Release 배포 (Tag 푸시 시 실행)
+  # 2. Release 배포 (수동 실행 시에도 작동)
   # ---------------------------------------------------------
   release:
     needs: [build-desktop]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # 수동 실행(workflow_dispatch) 또는 태그 푸시일 때 실행
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        
+        with:
+          path: ./artifacts
+
+      - name: Get current date (for Manual Release name)
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          # 수동 실행 시에는 날짜를 태그로 사용, 태그 푸시 시에는 해당 태그 사용
+          tag_name: ${{ github.ref_name == 'main' && format('manual-{0}', steps.date.outputs.date) || github.ref_name }}
+          name: KaneDefense Release ${{ github.ref_name == 'main' && steps.date.outputs.date || github.ref_name }}
+          draft: false
+          prerelease: false
           files: |
-            **/*.exe
-            **/*-Linux
-            **/*-Mac
+            ./artifacts/**/*.exe
+            ./artifacts/**/*-Linux
+            ./artifacts/**/*-Mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
