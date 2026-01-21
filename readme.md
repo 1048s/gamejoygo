@@ -5,4 +5,4 @@
  # 도움을 주신 분들
 > 백그라운드 음악(유튜브쟁이 닉네임) - 뭉탱탱이, 중앙동빨마, 너이게이씨, 코주부도깨비가면, 역사왜곡맨\
 > 이미지 - 기타 네이버카페 돈통분들\
-> https://www.youtube.com/@kanetv8\
+> https://www.youtube.com/@kanetv8
