@@ -22,10 +22,6 @@ jobs:
             artifact_name: KaneDefense-Linux
             sep: ":"
             ext: ""
-          - os: macos-latest
-            artifact_name: KaneDefense-Mac
-            sep: ":"
-            ext: ""
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -85,6 +81,5 @@ jobs:
           files: |
             ./release_files/**/*.exe
             ./release_files/**/KaneDefense-Linux
-            ./release_files/**/KaneDefense-Mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
