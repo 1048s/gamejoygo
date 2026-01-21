@@ -4,12 +4,9 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: # 여기서 수동으로 실행합니다.
+  workflow_dispatch:
 
 jobs:
-  # ---------------------------------------------------------
-  # 1. Desktop 빌드 (Windows, Linux, macOS)
-  # ---------------------------------------------------------
   build-desktop:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -47,24 +44,23 @@ jobs:
         shell: bash
         run: |
           TARGET_FILE=$(find . -maxdepth 2 -name "main.py" | head -n 1)
-          python -m PyInstaller --onefile --noconsole --name "${{ matrix.artifact_name }}${{ matrix.ext }}" \
-          --add-data "image${{ matrix.sep }}image" \
-          --add-data "sound${{ matrix.sep }}sound" \
-          --clean "$TARGET_FILE"
+          # 출력 파일명을 명확히 지정하여 중복 방지
+          python -m PyInstaller --onefile --noconsole \
+            --name "${{ matrix.artifact_name }}" \
+            --add-data "image${{ matrix.sep }}image" \
+            --add-data "sound${{ matrix.sep }}sound" \
+            --clean "$TARGET_FILE"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-desktop
-          path: dist/
+          # 각 운영체제별로 독립된 폴더에 저장
+          name: ${{ matrix.artifact_name }}-bin
+          path: dist/${{ matrix.artifact_name }}${{ matrix.ext }}
 
-  # ---------------------------------------------------------
-  # 2. Release 배포 (수동 실행 시에도 작동)
-  # ---------------------------------------------------------
   release:
     needs: [build-desktop]
     runs-on: ubuntu-latest
-    # 수동 실행(workflow_dispatch) 또는 태그 푸시일 때 실행
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
@@ -72,23 +68,23 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./artifacts
+          path: ./release_files
 
-      - name: Get current date (for Manual Release name)
+      - name: Get current date
         id: date
         run: echo "date=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          # 수동 실행 시에는 날짜를 태그로 사용, 태그 푸시 시에는 해당 태그 사용
-          tag_name: ${{ github.ref_name == 'main' && format('manual-{0}', steps.date.outputs.date) || github.ref_name }}
-          name: KaneDefense Release ${{ github.ref_name == 'main' && steps.date.outputs.date || github.ref_name }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', steps.date.outputs.date) }}
+          name: KaneDefense Release ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.date.outputs.date }}
           draft: false
           prerelease: false
+          # 중복 경로 방지를 위해 정밀하게 파일 지정
           files: |
-            ./artifacts/**/*.exe
-            ./artifacts/**/*-Linux
-            ./artifacts/**/*-Mac
+            ./release_files/**/*.exe
+            ./release_files/**/KaneDefense-Linux
+            ./release_files/**/KaneDefense-Mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
