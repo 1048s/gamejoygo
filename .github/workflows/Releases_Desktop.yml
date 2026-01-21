@@ -74,7 +74,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', steps.date.outputs.date) }}
-          name: KaneDefense Release ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.date.outputs.date }}
+          name: 케인 디펜스 ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.date.outputs.date }}
           draft: false
           prerelease: false
           # 중복 경로 방지를 위해 정밀하게 파일 지정

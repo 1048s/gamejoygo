@@ -36,9 +36,9 @@ hp_gold_val = 200
 range_gold_val = 150
 
 F_DMG_PRINCESS = 10
-F_DMG_DUCHESS = 5
+F_DMG_DUCHESS = 4
 F_DMG_CANON = 20
-F_DMG_JINUTELLA = 3
+F_DMG_JINUTELLA = 2
 
 BGM_VOL = 0.3
 SFX_VOL = 0.5
@@ -68,14 +68,14 @@ FONT_FILE = resource_path("font/D2Coding.ttf")
 def create_font(size, bold=False, italic=False):
     """폰트 파일을 로드하고, 볼드/이탤릭 속성을 설정하는 헬퍼 함수"""
     scaled_size = int(size * FONT_SCALE)
-    try:
-        font = pygame.font.Font(FONT_FILE, scaled_size)
-        font.set_bold(bold)
-        font.set_italic(italic)
-        return font
-    except (pygame.error, FileNotFoundError):
-        print(f"Warning: Font file not found at {FONT_FILE}. Falling back to system font.")
-        return pygame.font.SysFont("malgungothic", scaled_size, bold, italic)
+    if os.path.exists(FONT_FILE):
+        try:
+            font = pygame.font.Font(FONT_FILE, scaled_size)
+            font.set_bold(bold)
+            font.set_italic(italic)
+            return font
+        except Exception: pass
+    return pygame.font.SysFont("malgungothic", scaled_size, bold, italic)
 
 FONT_HP = create_font(16, bold=True)
 FONT_SHOP_TITLE = create_font(30, bold=True)
