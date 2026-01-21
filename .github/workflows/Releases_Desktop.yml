@@ -1,4 +1,4 @@
-name: KaneDefense Ultimate Release Build
+name: Desktop Builder
 
 on:
   push:
