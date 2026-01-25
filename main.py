@@ -62,16 +62,24 @@ def play_round_music(round_num):
 
     # 5개의 음악을 40라운드 동안 순환 (1~5번 음악)
     music_index = ((round_num - 1) % TOTAL_MUSIC_COUNT) + 1
-    # 파일 확장자가 .mp3라고 가정합니다. 필요시 .ogg 등으로 변경하세요.
-    music_file = resource_path(f"sound/mte{music_index}.mp3")
-
-    if os.path.exists(music_file):
+    
+    # 파일 확장자 유연성 및 경로 안전성 확보
+    music_file = None
+    for ext in ['.mp3', '.ogg', '.wav']:
+        path = resource_path(os.path.join("sound", f"mte{music_index}{ext}"))
+        if os.path.exists(path):
+            music_file = path
+            break
+            
+    if music_file:
         try:
             pygame.mixer.music.load(music_file)
             pygame.mixer.music.set_volume(BGM_VOL)
             pygame.mixer.music.play(-1) # 라운드 동안 무한 반복
         except pygame.error as e:
             print(f"음악 파일 로드/재생 오류 ({music_file}): {e}")
+    else:
+        print(f"BGM 파일을 찾을 수 없습니다: sound/mte{music_index}.[mp3/ogg/wav]")
 
 def get_current_damage(tower_type):
     d = TOWER_DATA[tower_type]

@@ -1,0 +1,66 @@
+import PyInstaller.__main__
+import platform
+import os
+import subprocess
+import shutil
+
+def build():
+    # 운영체제 확인 (Windows는 ';', Mac/Linux는 ':')
+    system_platform = platform.system()
+    sep = ';' if system_platform == 'Windows' else ':'
+    
+    print(f"Building for {system_platform}...")
+
+    # PyInstaller 옵션 설정
+    options = [
+        'main.py',                          # 메인 진입점 파일
+        '--name=KaneDefense',               # 생성될 실행 파일 이름
+        '--onefile',                        # 단일 실행 파일로 생성
+        '--noconsole',                      # 콘솔 창 숨김 (GUI 프로그램)
+        '--clean',                          # 빌드 캐시 정리
+    ]
+
+    # 리소스 데이터 포함 (소스경로:대상경로) - 폴더가 존재할 때만 추가
+    for folder in ['image', 'sound', 'font']:
+        if os.path.exists(folder):
+            options.append(f'--add-data={folder}{sep}{folder}')
+        else:
+            print(f"Warning: Resource folder '{folder}' not found. Skipping.")
+
+    # PyInstaller 실행
+    PyInstaller.__main__.run(options)
+
+    # 빌드 폴더 삭제 (정리)
+    if os.path.exists('build'):
+        shutil.rmtree('build')
+        print("Removed 'build' directory.")
+
+    # 결과 폴더 생성 및 파일 이동 (dist -> result)
+    result_path = os.path.abspath("result")
+    if not os.path.exists(result_path):
+        os.makedirs(result_path)
+
+    dist_path = os.path.abspath("dist")
+    if os.path.exists(dist_path):
+        for filename in os.listdir(dist_path):
+            src = os.path.join(dist_path, filename)
+            dst = os.path.join(result_path, filename)
+            if os.path.exists(dst): # 기존 파일이 있으면 삭제
+                if os.path.isdir(dst): shutil.rmtree(dst)
+                else: os.remove(dst)
+            shutil.move(src, dst)
+        shutil.rmtree(dist_path) # dist 폴더 삭제
+        print(f"Moved build artifacts to '{result_path}'")
+
+    # 결과 폴더 열기
+    if os.path.exists(result_path):
+        print(f"Opening result folder: {result_path}")
+        if system_platform == 'Windows':
+            os.startfile(result_path)
+        elif system_platform == 'Darwin': # macOS
+            subprocess.call(["open", result_path])
+        else: # Linux
+            subprocess.call(["xdg-open", result_path])
+
+if __name__ == "__main__":
+    build()
