@@ -45,6 +45,7 @@ jobs:
             --name "${{ matrix.artifact_name }}" \
             --add-data "image${{ matrix.sep }}image" \
             --add-data "sound${{ matrix.sep }}sound" \
+            --add-data "font${{ matrix.sep }}font" \
             --clean "$TARGET_FILE"
 
       - name: Upload Artifact
