@@ -22,6 +22,10 @@ jobs:
             artifact_name: KaneDefense-Linux
             sep: ":"
             ext: ""
+          - os: macos-latest
+            artifact_name: KaneDefense-Mac
+            sep: ":"
+            ext: ".zip"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -47,6 +51,11 @@ jobs:
             --add-data "sound${{ matrix.sep }}sound" \
             --add-data "font${{ matrix.sep }}font" \
             --clean "$TARGET_FILE"
+
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cd dist
+            zip -r "${{ matrix.artifact_name }}.zip" "${{ matrix.artifact_name }}.app"
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -82,5 +91,6 @@ jobs:
           files: |
             ./release_files/**/*.exe
             ./release_files/**/KaneDefense-Linux
+            ./release_files/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
