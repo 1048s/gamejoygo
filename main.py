@@ -3,111 +3,16 @@ import pygame
 import sys
 import math
 import os
-import argparse
-from PIL import Image
+from mte_config import *
+from mte_object import *
 
-# --- 실행 인수 처리 (치트 활성화) ---
-parser = argparse.ArgumentParser()
-parser.add_argument("--cheat", action="store_true", help="치트 모드를 활성화합니다.")
-args = parser.parse_known_args()[0]
-CHEAT_MODE = args.cheat
-
-# --- 초기화 ---
-pygame.init()
-pygame.mixer.init()
-
-# --- 리소스 경로 처리 함수 (빌드 시 필수) ---
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-# --- 설정 및 전역 변수 ---
-infoObject = pygame.display.Info()
-RESOLUTION = (infoObject.current_w, infoObject.current_h)
-# 해상도 높이에 따른 폰트 크기 스케일 (1080p 기준)
-FONT_SCALE = max(0.5, min(2.5, RESOLUTION[1] / 1080.0))
-FPS = 144
-GRID_SIZE = 80 
-damage_gold_val = 15
-hp_gold_val = 200
-range_gold_val = 150
-
-F_DMG_PRINCESS = 10
-F_DMG_DUCHESS = 4
-F_DMG_CANON = 20
-F_DMG_JINUTELLA = 2
-
-BGM_VOL = 0.3
-SFX_VOL = 0.5
-
-STATE_START_SCREEN = -1
-STATE_PLAYING = 0
-STATE_AIGONAN = 1
 game_state_mode = STATE_START_SCREEN
-
-WHITE, BLACK, RED, BLUE, GREEN = (255, 255, 255), (0, 0, 0), (255, 0, 0), (0, 0, 255), (0, 255, 0)
-YELLOW, PURPLE, CYAN, BROWN = (255, 255, 0), (128, 0, 128), (0, 255, 255), (139, 69, 19)
-DARK_RED, GRAY = (150, 0, 0), (50, 50, 50)
-PATH_COLOR = (200, 200, 200)
-BROWN_ALPHA = (139, 69, 19, 120) 
 
 # SCALED 플래그를 추가하여 최종 출력을 하드웨어 가속 처리 시도
 display_surface = pygame.display.set_mode(RESOLUTION, pygame.FULLSCREEN | pygame.SCALED)
 pygame.display.set_caption("케인 디펜스")
 
 clock = pygame.time.Clock()
-
-# --- 폰트 설정 ---
-# 안드로이드 호환성을 위해 폰트 파일을 직접 로드합니다.
-# 'font' 폴더에 D2Coding.ttf 같은 폰트 파일을 추가해야 합니다.
-FONT_FILE = resource_path("font/D2Coding.ttf")
-
-def create_font(size, bold=False, italic=False):
-    """폰트 파일을 로드하고, 볼드/이탤릭 속성을 설정하는 헬퍼 함수"""
-    scaled_size = int(size * FONT_SCALE)
-    if os.path.exists(FONT_FILE):
-        try:
-            font = pygame.font.Font(FONT_FILE, scaled_size)
-            font.set_bold(bold)
-            font.set_italic(italic)
-            return font
-        except Exception: pass
-    return pygame.font.SysFont("malgungothic", scaled_size, bold, italic)
-
-FONT_HP = create_font(16, bold=True)
-FONT_SHOP_TITLE = create_font(30, bold=True)
-FONT_BTN_SMALL = create_font(18, bold=True)
-FONT_BTN_LARGE = create_font(22, bold=True)
-FONT_COOLDOWN = create_font(14, bold=True)
-FONT_UI = create_font(25, bold=True)
-FONT_DMG_TEXT = create_font(15, bold=True)
-FONT_TITLE = create_font(60, bold=True)
-FONT_HELP = create_font(30)
-FONT_GAMEOVER = create_font(100, bold=True)
-FONT_POPUP_TITLE = create_font(30, bold=True)
-FONT_CLEAR = create_font(100, bold=True)
-
-# --- 성능 최적화를 위한 캐시 ---
-TEXT_CACHE = {}
-RANGE_SURFACE_CACHE = {}
-
-def get_text_surface(text, font, color):
-    """렌더링된 텍스트 서피스를 캐시하여 반환합니다. GPU 가속을 위해 convert_alpha()를 사용합니다."""
-    key = (text, font, color)
-    if key not in TEXT_CACHE:
-        TEXT_CACHE[key] = font.render(text, True, color).convert_alpha()
-    return TEXT_CACHE[key]
-
-def get_range_surface(radius, color):
-    key = (radius, color)
-    if key not in RANGE_SURFACE_CACHE:
-        s = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
-        pygame.draw.circle(s, color, (radius, radius), radius)
-        RANGE_SURFACE_CACHE[key] = s
-    return RANGE_SURFACE_CACHE[key]
 
 # --- 유틸리티 함수 ---
 def draw_text_with_outline(surface, text, font, pos, text_color, outline_color):
@@ -133,34 +38,6 @@ def draw_text_with_outline(surface, text, font, pos, text_color, outline_color):
 
     surface.blit(TEXT_CACHE[key], pos)
 
-def load_smart_image(base_path, size):
-    for ext in ['.png', '.PNG', '.jpg', '.JPG']:
-        full_path = resource_path(base_path + ext)
-        if os.path.exists(full_path):
-            try: return pygame.transform.scale(pygame.image.load(full_path).convert_alpha(), size)
-            except: continue
-    return None
-
-def load_gif_frames_21_9(filename, target_width):
-    path = resource_path(f"image/{filename}")
-    frames = []
-    target_height = int(target_width * 9 / 21)
-    size = (target_width, target_height)
-    if os.path.exists(path):
-        with Image.open(path) as gif:
-            for i in range(gif.n_frames):
-                gif.seek(i); frame = gif.convert("RGBA")
-                pygame_frame = pygame.image.fromstring(frame.tobytes(), frame.size, frame.mode)
-                frames.append(pygame.transform.scale(pygame_frame, size))
-    return frames
-
-def load_sound(file_path):
-    full_path = resource_path(file_path)
-    if os.path.exists(full_path): 
-        s = pygame.mixer.Sound(full_path); s.set_volume(SFX_VOL)
-        return s
-    return None
-
 # --- 리소스 로드 ---
 background_image = load_smart_image("image/yousuck", RESOLUTION)
 building_image = load_smart_image("image/building", (120, 120))
@@ -172,115 +49,35 @@ projectile_images = {
     "mte24": load_smart_image("image/mte24", (40, 40)),
     "mte25": load_smart_image("image/mte25", (60, 60))
 }
-bgm_file = resource_path("sound/bgm.mp3")
-if os.path.exists(bgm_file):
-    pygame.mixer.music.load(bgm_file); pygame.mixer.music.set_volume(BGM_VOL); pygame.mixer.music.play(-1)
 aigonan_sound, oh_sound, bbolong_sound = load_sound("sound/aigonan.mp3"), load_sound("sound/oh.mp3"), load_sound("sound/bbolong.mp3")
 
-# --- 데이터 ---
-TOWER_DATA = {
-    "PRINCESS": {"name": "이걸 왜쏴 ㅋㅋ", "cost": 100, "range": 300, "dmg": F_DMG_PRINCESS, "cd": 20, "color": BLUE, "image_path": "image/uring1", "p_img": "mte23"},
-    "DUCHESS": {"name": "집게이사장", "cost": 250, "range": 200, "dmg": F_DMG_DUCHESS, "cd": 5, "color": PURPLE, "image_path": "image/uring2", "p_img": "mte24"},
-    "CANON": {"name": "-3000로베로스", "cost": 400, "range": 400, "dmg": F_DMG_CANON, "cd": 60, "color": CYAN, "image_path": "image/uring3", "p_img": "mte25"},
-    "JINUTELLA": {"name": "지누텔라", "cost": 500, "range": 160, "dmg": F_DMG_JINUTELLA, "cd": 15, "color": YELLOW, "image_path": "image/mte20", "p_img": None}
-}
+# --- 음악 관련 변수 및 함수 ---
+TOTAL_MUSIC_COUNT = 5 # 사용 가능한 BGM 파일 개수 (mte1.mp3, mte2.mp3, ...)
+
+def play_round_music(round_num):
+    """라운드에 맞는 배경음악을 재생합니다."""
+    if round_num > 40: # 40 라운드 클리어 시 음악 중지
+        pygame.mixer.music.stop()
+        return
+
+    # 5개의 음악을 40라운드 동안 순환 (1~5번 음악)
+    music_index = ((round_num - 1) % TOTAL_MUSIC_COUNT) + 1
+    # 파일 확장자가 .mp3라고 가정합니다. 필요시 .ogg 등으로 변경하세요.
+    music_file = resource_path(f"sound/mte{music_index}.mp3")
+
+    if os.path.exists(music_file):
+        try:
+            pygame.mixer.music.load(music_file)
+            pygame.mixer.music.set_volume(BGM_VOL)
+            pygame.mixer.music.play(-1) # 라운드 동안 무한 반복
+        except pygame.error as e:
+            print(f"음악 파일 로드/재생 오류 ({music_file}): {e}")
 
 def get_current_damage(tower_type):
     d = TOWER_DATA[tower_type]
     dmg = int(d["dmg"] * (1.4 ** (damage_level - 1)))
     if is_overtime: dmg = int(dmg * 1.5)
     return dmg
-
-# --- 클래스 정의 ---
-class Button:
-    def __init__(self, x, y, w, h, text, color, val=None):
-        self.rect = pygame.Rect(x, y, w, h); self.text, self.color, self.val = text, color, val
-    def draw(self, surface, is_selected=False):
-        pygame.draw.rect(surface, self.color, self.rect, border_radius=10)
-        if is_selected: pygame.draw.rect(surface, WHITE, self.rect, 4, border_radius=10)
-        font = FONT_BTN_SMALL if self.val else FONT_BTN_LARGE
-        txt_surf = get_text_surface(self.text, font, WHITE)
-        surface.blit(txt_surf, (self.rect.centerx - txt_surf.get_width()//2, self.rect.centery - txt_surf.get_height()//2))
-
-class Nexus:
-    def __init__(self, pos):
-        self.image = building_image; self.rect = building_image.get_rect(center=pos) if building_image else pygame.Rect(pos[0]-60, pos[1]-60, 120, 120)
-        self.max_hp = 10000; self.hp = 10000
-        self.attack_timer = 0
-        self.cd = int(TOWER_DATA["DUCHESS"]["cd"] / 0.7)
-    def draw(self, surface):
-        if self.image: surface.blit(self.image, self.rect)
-        pygame.draw.rect(surface, RED, (self.rect.x, self.rect.y-30, 120, 10))
-        pygame.draw.rect(surface, GREEN, (self.rect.x, self.rect.y-30, 120*(max(0, self.hp)/self.max_hp), 10))
-
-class Enemy:
-    def __init__(self, path, round_num, is_boss=False):
-        self.path, self.target_idx, self.is_boss = path, 0, is_boss
-        base_img = "image/mte2" if is_boss else f"image/mte{random.randint(2,15)}"
-        size = (100, 100) if is_boss else (70, 70)
-        self.image = load_smart_image(base_img, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = path[0]
-        self.pos = pygame.Vector2(path[0])
-        self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.speed = 0.5 if is_boss else 1
-    def move(self, dt, speed_mult):
-        move_step = self.speed * speed_mult * (dt * 144)
-        while move_step > 0 and self.target_idx < len(self.path):
-            target = pygame.Vector2(self.path[self.target_idx])
-            dir_vec = target - self.pos
-            dist = dir_vec.length()
-            if dist <= move_step:
-                self.pos = target
-                move_step -= dist
-                self.target_idx += 1
-            else:
-                if dist > 0: self.pos += dir_vec.normalize() * move_step
-                move_step = 0
-        self.rect.center = (int(self.pos.x), int(self.pos.y))
-    def draw(self, surface):
-        if self.image: surface.blit(self.image, self.rect)
-        pygame.draw.rect(surface, RED, (self.rect.x, self.rect.y-10, self.rect.width, 4))
-        pygame.draw.rect(surface, GREEN, (self.rect.x, self.rect.y-10, self.rect.width*(max(0, self.hp)/self.max_hp), 4))
-        hp_text = f"{int(self.hp)}"
-        # [성능 개선] 텍스트 렌더링 결과를 캐시하여 사용
-        txt_surf = get_text_surface(hp_text, FONT_HP, WHITE)
-        shadow_surf = get_text_surface(hp_text, FONT_HP, BLACK)
-        txt_pos_x = self.rect.centerx - txt_surf.get_width() // 2
-        surface.blit(shadow_surf, (txt_pos_x + 1, self.rect.y - 29))
-        surface.blit(txt_surf, (txt_pos_x, self.rect.y - 30))
-
-class Projectile:
-    def __init__(self, start_pos, target_enemy, dmg, img_key, speed=15):
-        self.pos, self.target_enemy, self.dmg, self.speed, self.reached = pygame.Vector2(start_pos), target_enemy, dmg, speed, False
-        self.image = projectile_images.get(img_key)
-    def move(self, dt, game_speed):
-        if not self.target_enemy or self.target_enemy.hp <= 0: self.reached = True; return
-        tp = pygame.Vector2(self.target_enemy.rect.center); dir = (tp - self.pos); dist = dir.length()
-        move_step = self.speed * game_speed * (dt * 144)
-        if dist < move_step: self.target_enemy.hp -= self.dmg; self.reached = True
-        elif dist > 0: self.pos += dir.normalize() * move_step
-    def draw(self, surface):
-        if self.image: surface.blit(self.image, self.image.get_rect(center=(int(self.pos.x), int(self.pos.y))))
-        else: pygame.draw.circle(surface, YELLOW, (int(self.pos.x), int(self.pos.y)), 6)
-
-class Tower:
-    def __init__(self, x, y, tower_type):
-        d = TOWER_DATA[tower_type]; self.type, self.cost = tower_type, d["cost"]
-        self.image = load_smart_image(d["image_path"], (GRID_SIZE, GRID_SIZE))
-        self.rect = pygame.Rect((x//GRID_SIZE)*GRID_SIZE, (y//GRID_SIZE)*GRID_SIZE, GRID_SIZE, GRID_SIZE)
-        self.attack_timer, self.effect_timer = 0, 0 
-    def draw(self, surface):
-        if self.type == "JINUTELLA" and self.effect_timer > 0:
-            rv = TOWER_DATA[self.type]["range"] + (range_level - 1) * 20
-            es = get_range_surface(rv, BROWN_ALPHA) # [최적화] 매 프레임 Surface 생성 방지
-            surface.blit(es, (self.rect.centerx-rv, self.rect.centery-rv))
-        if self.image: surface.blit(self.image, self.rect)
-        else: pygame.draw.rect(surface, TOWER_DATA[self.type]["color"], self.rect.inflate(-20,-20), border_radius=5)
-        if self.attack_timer > 0:
-            bw = GRID_SIZE * 0.8; fw = bw * (self.attack_timer / TOWER_DATA[self.type]["cd"])
-            pygame.draw.rect(surface, GRAY, (self.rect.x + (GRID_SIZE-bw)//2, self.rect.y+5, bw, 6))
-            pygame.draw.rect(surface, YELLOW, (self.rect.x + (GRID_SIZE-bw)//2, self.rect.y+5, fw, 6))
-            # [성능 개선] 루프 내에서 폰트 객체 생성 및 렌더링 대신 캐시 사용
-            cd_txt = get_text_surface(f"{self.attack_timer/60:.1f}s", FONT_COOLDOWN, BLACK)
-            surface.blit(cd_txt, (self.rect.centerx - cd_txt.get_width()//2, self.rect.y + 12))
 
 # --- 유틸리티 및 경로 ---
 def get_c(gx, gy): return (gx * GRID_SIZE + GRID_SIZE // 2, gy * GRID_SIZE + GRID_SIZE // 2)
@@ -307,12 +104,11 @@ def reset_game():
     time_left = 10 + (current_round * 5)
     round_start_time, enemies, towers, projectiles = 0.0, [], [], []
     game_state_mode, shop_open, settings_open, jukku_confirm_open, selected_tower_type, gif_frame_idx = STATE_PLAYING, False, False, False, "PRINCESS", 0
-    last_spawn_time, is_break_time, nexus = 0, True, Nexus(enemy_path[-1])
+    last_spawn_time, is_break_time, nexus = 0, True, Nexus(enemy_path[-1], building_image)
     shop_pos, is_dragging_shop, drag_offset = [(RESOLUTION[0] - 650) // 2, int(RESOLUTION[1] * 0.15)], False, [0, 0]
     settings_pos, is_dragging_settings, drag_offset_settings = [(RESOLUTION[0] - 450) // 2, (RESOLUTION[1] - 450) // 2], False, [0, 0]
     ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count = False, False, False, None, 0
     is_overtime, overtime_start_time = False, 0
-    if os.path.exists(bgm_file): pygame.mixer.music.load(bgm_file); pygame.mixer.music.set_volume(BGM_VOL); pygame.mixer.music.play(-1)
 
 reset_game(); game_state_mode = STATE_START_SCREEN
 
@@ -381,7 +177,11 @@ while running:
                     sell_confirm_open, tower_to_sell = False, None
                 elif pygame.Rect(sx+280, sy+140, 160, 60).collidepoint(mx, my): sell_confirm_open, tower_to_sell = False, None
                 continue
-            if game_state_mode == STATE_START_SCREEN and start_btn.rect.collidepoint(mx, my): game_state_mode = STATE_PLAYING; round_start_time = virtual_elapsed_time
+            if game_state_mode == STATE_START_SCREEN and start_btn.rect.collidepoint(mx, my):
+                game_state_mode = STATE_PLAYING
+                round_start_time = virtual_elapsed_time
+                play_round_music(current_round)
+
             elif game_state_mode == STATE_PLAYING:
                 if current_round > 40 and quit_btn.rect.collidepoint(mx, my): quit_confirm_open = True; continue
                 if jukku_confirm_open:
@@ -421,7 +221,9 @@ while running:
                 elif speed_btn.rect.collidepoint(mx, my): game_speed = 2 if game_speed==1 else (4 if game_speed==2 else 1); speed_btn.text = f"배속: {game_speed}x"
                 elif can_place and gold >= TOWER_DATA[selected_tower_type]["cost"]: 
                     towers.append(Tower(mx, my, selected_tower_type)); gold -= TOWER_DATA[selected_tower_type]["cost"]
-            elif game_state_mode == STATE_AIGONAN and retry_btn.rect.collidepoint(mx, my): reset_game()
+            elif game_state_mode == STATE_AIGONAN and retry_btn.rect.collidepoint(mx, my):
+                reset_game()
+                play_round_music(current_round)
         if event.type == pygame.MOUSEBUTTONUP: is_dragging_shop, is_dragging_settings = False, False
         if event.type == pygame.MOUSEMOTION:
             if is_dragging_shop: shop_pos[0], shop_pos[1] = mx + drag_offset[0], my + drag_offset[1]
@@ -440,7 +242,8 @@ while running:
                 time_left = 0
                 if not enemies or (virtual_elapsed_time - overtime_start_time >= 60):
                     is_overtime = False
-                    is_break_time, current_round, round_start_time, gold = True, current_round+1, virtual_elapsed_time, gold+(100 * current_round)
+                    is_break_time, current_round, round_start_time, gold = True, current_round + 1, virtual_elapsed_time, gold + (100 * current_round)
+                    play_round_music(current_round)
             else:
                 time_left = max(0, 45 - c_time)
                 if current_round == 40:
@@ -452,10 +255,12 @@ while running:
                         is_overtime = True
                         overtime_start_time = virtual_elapsed_time
                     else:
-                        is_break_time, current_round, round_start_time, gold = True, current_round+1, virtual_elapsed_time, gold+(100 * current_round)
+                        is_break_time, current_round, round_start_time, gold = True, current_round + 1, virtual_elapsed_time, gold + (100 * current_round)
+                        play_round_music(current_round)
                 if not enemies and (virtual_elapsed_time - round_start_time > 2.0):
                     if current_round != 40 or (current_round == 40 and boss_spawn_count >= 10):
-                        round_start_time = virtual_elapsed_time - 45
+                        is_break_time, current_round, round_start_time, gold = True, current_round + 1, virtual_elapsed_time, gold + (100 * current_round)
+                        play_round_music(current_round)
         
         for p in projectiles[:]:
             p.move(dt, game_speed)
@@ -472,14 +277,14 @@ while running:
                             t.effect_timer = 12
                             for e2 in enemies:
                                 if math.hypot(e2.rect.centerx-t.rect.centerx, e2.rect.centery-t.rect.centery) <= eff_range: e2.hp -= get_current_damage(t.type)
-                        else: projectiles.append(Projectile(t.rect.center, e, get_current_damage(t.type), d["p_img"]))
+                        else: projectiles.append(Projectile(t.rect.center, e, get_current_damage(t.type), d["p_img"], projectile_images))
                         t.attack_timer = d["cd"]; break
         if nexus.attack_timer > 0: nexus.attack_timer -= 1 * game_speed * (dt * 144)
         else:
             eff_range = 300 + (range_level - 1) * 20
             for e in enemies:
                 if math.hypot(e.rect.centerx-nexus.rect.centerx, e.rect.centery-nexus.rect.centery) <= eff_range:
-                    projectiles.append(Projectile(nexus.rect.center, e, get_current_damage("PRINCESS") * 2, "mte23"))
+                    projectiles.append(Projectile(nexus.rect.center, e, get_current_damage("PRINCESS") * 2, "mte23", projectile_images))
                     nexus.attack_timer = nexus.cd; break
         for e in enemies[:]:
             e.move(dt, game_speed)
@@ -511,7 +316,7 @@ while running:
         if shop_open and not (shop_rect.collidepoint(mx, my)) and current_round <= 40:
             ps = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA); pygame.draw.rect(ps, (0,255,0,100) if can_place else (255,0,0,100), (0,0,GRID_SIZE,GRID_SIZE)); display_surface.blit(ps, (gmx, gmy))
             rv = TOWER_DATA[selected_tower_type]["range"] + (range_level - 1) * 20; rs = pygame.Surface((rv*2, rv*2), pygame.SRCALPHA); pygame.draw.circle(rs, (255,255,255,60), (rv,rv), rv); display_surface.blit(rs, (gmx+GRID_SIZE//2-rv, gmy+GRID_SIZE//2-rv))
-        for t in towers: t.draw(display_surface)
+        for t in towers: t.draw(display_surface, range_level)
         for e in enemies: e.draw(display_surface)
         for p in projectiles: p.draw(display_surface)
         nexus.draw(display_surface); open_shop_btn.draw(display_surface); open_settings_btn.draw(display_surface); speed_btn.draw(display_surface)
