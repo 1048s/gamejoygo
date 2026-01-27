@@ -9,8 +9,8 @@ import mte_object
 import json
 import glob
 
-game_state_mode = STATE_START_SCREEN
 STATE_MAP_SELECT = 2
+game_state_mode = STATE_MAP_SELECT
 display_mode_setting = 0 # 0: 창모드, 1: 전체화면, 2: 전체화면(창)
 NATIVE_RESOLUTION = RESOLUTION # mte_config에서 가져온 초기(모니터) 해상도 저장
 
@@ -289,7 +289,7 @@ def reset_game(target_state=STATE_PLAYING):
     ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count = False, False, False, None, 0
     is_overtime, overtime_start_time, show_skip_button, enemies_to_spawn_this_round, enemies_spawned_this_round = False, 0, False, 0, 0
 
-reset_game(STATE_START_SCREEN)
+reset_game(STATE_MAP_SELECT)
 
 # --- 메인 루프 ---
 running = True
