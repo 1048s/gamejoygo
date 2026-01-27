@@ -8,7 +8,7 @@ class Button:
     def draw(self, surface, is_selected=False):
         pygame.draw.rect(surface, self.color, self.rect, border_radius=10)
         if is_selected: pygame.draw.rect(surface, WHITE, self.rect, 4, border_radius=10)
-        font = FONT_BTN_SMALL if self.val else FONT_BTN_LARGE
+        font = Fonts.BTN_SMALL if self.val else Fonts.BTN_LARGE
         txt_surf = get_text_surface(self.text, font, WHITE)
         surface.blit(txt_surf, (self.rect.centerx - txt_surf.get_width()//2, self.rect.centery - txt_surf.get_height()//2))
 
@@ -26,9 +26,11 @@ class Nexus:
 class Enemy:
     def __init__(self, path, round_num, is_boss=False):
         self.path, self.target_idx, self.is_boss = path, 0, is_boss
-        base_img = "image/mte2" if is_boss else f"image/mte{random.randint(2,15)}"
-        size = (100, 100) if is_boss else (70, 70)
-        self.image = load_smart_image(base_img, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = path[0]
+        self.image_path = "image/mte2" if is_boss else f"image/mte{random.randint(2,15)}"
+        scale = GRID_SIZE / 80.0
+        w, h = (100, 100) if is_boss else (70, 70)
+        size = (int(w * scale), int(h * scale))
+        self.image = load_smart_image(self.image_path, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = path[0]
         self.pos = pygame.Vector2(path[0])
         self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.speed = 0.5 if is_boss else 1
     def move(self, dt, speed_mult):
@@ -50,8 +52,8 @@ class Enemy:
         pygame.draw.rect(surface, RED, (self.rect.x, self.rect.y-10, self.rect.width, 4))
         pygame.draw.rect(surface, GREEN, (self.rect.x, self.rect.y-10, self.rect.width*(max(0, self.hp)/self.max_hp), 4))
         hp_text = f"{int(self.hp)}"
-        txt_surf = get_text_surface(hp_text, FONT_HP, WHITE)
-        shadow_surf = get_text_surface(hp_text, FONT_HP, BLACK)
+        txt_surf = get_text_surface(hp_text, Fonts.HP, WHITE)
+        shadow_surf = get_text_surface(hp_text, Fonts.HP, BLACK)
         txt_pos_x = self.rect.centerx - txt_surf.get_width() // 2
         surface.blit(shadow_surf, (txt_pos_x + 1, self.rect.y - 29))
         surface.blit(txt_surf, (txt_pos_x, self.rect.y - 30))
@@ -87,5 +89,5 @@ class Tower:
             bw = GRID_SIZE * 0.8; fw = bw * (self.attack_timer / TOWER_DATA[self.type]["cd"])
             pygame.draw.rect(surface, GRAY, (self.rect.x + (GRID_SIZE-bw)//2, self.rect.y+5, bw, 6))
             pygame.draw.rect(surface, YELLOW, (self.rect.x + (GRID_SIZE-bw)//2, self.rect.y+5, fw, 6))
-            cd_txt = get_text_surface(f"{self.attack_timer/60:.1f}s", FONT_COOLDOWN, BLACK)
+            cd_txt = get_text_surface(f"{self.attack_timer/60:.1f}s", Fonts.COOLDOWN, BLACK)
             surface.blit(cd_txt, (self.rect.centerx - cd_txt.get_width()//2, self.rect.y + 12))

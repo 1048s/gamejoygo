@@ -28,7 +28,7 @@ RESOLUTION = (infoObject.current_w, infoObject.current_h)
 FONT_SCALE = max(0.5, min(2.5, RESOLUTION[1] / 1080.0))
 FPS = 144
 GRID_SIZE = 80 
-damage_gold_val = 15
+damage_gold_val = 50
 hp_gold_val = 200
 range_gold_val = 150
 
@@ -55,6 +55,10 @@ FONT_FILE = resource_path("font/D2Coding.ttf")
 TEXT_CACHE = {}
 RANGE_SURFACE_CACHE = {}
 
+class GameFonts:
+    pass
+Fonts = GameFonts()
+
 def create_font(size, bold=False, italic=False):
     scaled_size = int(size * FONT_SCALE)
     if os.path.exists(FONT_FILE):
@@ -66,18 +70,25 @@ def create_font(size, bold=False, italic=False):
         except Exception: pass
     return pygame.font.SysFont("malgungothic", scaled_size, bold, italic)
 
-FONT_HP = create_font(16, bold=True)
-FONT_SHOP_TITLE = create_font(30, bold=True)
-FONT_BTN_SMALL = create_font(18, bold=True)
-FONT_BTN_LARGE = create_font(22, bold=True)
-FONT_COOLDOWN = create_font(14, bold=True)
-FONT_UI = create_font(25, bold=True)
-FONT_DMG_TEXT = create_font(15, bold=True)
-FONT_TITLE = create_font(60, bold=True)
-FONT_HELP = create_font(30)
-FONT_GAMEOVER = create_font(100, bold=True)
-FONT_POPUP_TITLE = create_font(30, bold=True)
-FONT_CLEAR = create_font(100, bold=True)
+def init_fonts(screen_height):
+    global FONT_SCALE
+    FONT_SCALE = max(0.5, min(2.5, screen_height / 1080.0))
+    TEXT_CACHE.clear() # 폰트 변경 시 캐시 초기화
+    
+    Fonts.HP = create_font(16, bold=True)
+    Fonts.SHOP_TITLE = create_font(30, bold=True)
+    Fonts.BTN_SMALL = create_font(18, bold=True)
+    Fonts.BTN_LARGE = create_font(22, bold=True)
+    Fonts.COOLDOWN = create_font(14, bold=True)
+    Fonts.UI = create_font(25, bold=True)
+    Fonts.DMG_TEXT = create_font(15, bold=True)
+    Fonts.TITLE = create_font(60, bold=True)
+    Fonts.HELP = create_font(30)
+    Fonts.GAMEOVER = create_font(100, bold=True)
+    Fonts.POPUP_TITLE = create_font(30, bold=True)
+    Fonts.CLEAR = create_font(100, bold=True)
+
+init_fonts(RESOLUTION[1])
 
 # --- 리소스 로더 함수 ---
 def get_text_surface(text, font, color):

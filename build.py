@@ -3,6 +3,7 @@ import platform
 import os
 import subprocess
 import shutil
+import tempfile
 
 def build():
     # 운영체제 확인 (Windows는 ';', Mac/Linux는 ':')
@@ -11,6 +12,10 @@ def build():
     
     print(f"Building for {system_platform}...")
 
+    # 임시 작업 디렉토리 생성 (캐시 파일 저장용)
+    build_cache_dir = tempfile.mkdtemp(prefix="KaneDefense_Build_")
+    print(f"Using temporary build directory: {build_cache_dir}")
+
     # PyInstaller 옵션 설정
     options = [
         'main.py',                          # 메인 진입점 파일
@@ -18,6 +23,8 @@ def build():
         '--onefile',                        # 단일 실행 파일로 생성
         '--noconsole',                      # 콘솔 창 숨김 (GUI 프로그램)
         '--clean',                          # 빌드 캐시 정리
+        f'--workpath={build_cache_dir}',      # 빌드 작업 경로를 캐시 폴더로 지정
+        f'--specpath={build_cache_dir}',      # .spec 파일을 캐시 폴더로 지정
     ]
 
     # 리소스 데이터 포함 (소스경로:대상경로) - 폴더가 존재할 때만 추가
@@ -29,11 +36,6 @@ def build():
 
     # PyInstaller 실행
     PyInstaller.__main__.run(options)
-
-    # 빌드 폴더 삭제 (정리)
-    if os.path.exists('build'):
-        shutil.rmtree('build')
-        print("Removed 'build' directory.")
 
     # 결과 폴더 생성 및 파일 이동 (dist -> result)
     result_path = os.path.abspath("result")
@@ -51,6 +53,11 @@ def build():
             shutil.move(src, dst)
         shutil.rmtree(dist_path) # dist 폴더 삭제
         print(f"Moved build artifacts to '{result_path}'")
+
+    # 빌드 캐시 디렉토리 삭제
+    if os.path.exists(build_cache_dir):
+        shutil.rmtree(build_cache_dir)
+        print("Cleaned up temporary build files.")
 
     # 결과 폴더 열기
     if os.path.exists(result_path):
