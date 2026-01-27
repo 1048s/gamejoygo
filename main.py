@@ -258,7 +258,6 @@ def show_input_dialog(surface, prompt):
         pygame.draw.rect(surface, WHITE, box_rect, border_radius=20)
         pygame.draw.rect(surface, BLACK, box_rect, 4, border_radius=20)
         
-        p_surf = get_text_surface(prompt, FONT_UI, BLACK); surface.blit(p_surf, (box_rect.centerx - p_surf.get_width()//2, box_rect.y + 40))
         p_surf = get_text_surface(prompt, Fonts.UI, BLACK); surface.blit(p_surf, (box_rect.centerx - p_surf.get_width()//2, box_rect.y + 40))
         i_surf = get_text_surface(input_str + "_", Fonts.TITLE, BLUE); surface.blit(i_surf, (box_rect.centerx - i_surf.get_width()//2, box_rect.y + 100))
         pygame.display.update()
