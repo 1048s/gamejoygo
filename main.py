@@ -9,7 +9,19 @@ import mte_object
 import json
 import glob
 
+# --- 상태 정의 ---
 STATE_MAP_SELECT = 2
+STATE_SETTINGS = 3
+
+# --- 전역 변수 ---
+state_before_settings = STATE_PLAYING # 설정 화면 진입 전 상태 저장
+show_save_feedback_timer = 0 # 설정 저장 피드백 타이머
+save_confirm_open = False # 설정 나가기 전 저장 확인 팝업
+initial_settings = {} # 설정 화면 진입 시 초기값 저장
+
+# --- 설정 관리 ---
+CONFIG_FILE = "launcher_config.json"
+
 game_state_mode = STATE_MAP_SELECT
 display_mode_setting = 0 # 0: 창모드, 1: 전체화면, 2: 전체화면(창)
 NATIVE_RESOLUTION = RESOLUTION # mte_config에서 가져온 초기(모니터) 해상도 저장
@@ -18,9 +30,11 @@ def init_ui():
     """현재 해상도(RESOLUTION)에 맞춰 UI 요소들의 위치를 초기화합니다."""
     global start_btn, map_prev_btn, map_next_btn, map_select_confirm_btn, map_select_back_btn
     global open_shop_btn, open_settings_btn, speed_btn, quit_btn, retry_btn, next_round_btn
-    global display_mode_window_btn, display_mode_borderless_btn, display_mode_fullscreen_btn
+    global settings_back_btn, settings_save_btn, bgm_vol_down_btn, bgm_vol_up_btn, sfx_vol_down_btn, sfx_vol_up_btn
+    global display_mode_window_btn, display_mode_fullscreen_btn, settings_jukku_btn, settings_quit_btn
 
     s = RESOLUTION[1] / 1080.0 # UI 크기 비율
+    s_w, s_h = RESOLUTION[0], RESOLUTION[1]
 
     # 메인 화면 버튼
     start_btn = Button(RESOLUTION[0]//2 - int(150*s), int(RESOLUTION[1] * 0.85), int(300*s), int(80*s), "게 이 시 작 !", BLUE)
@@ -44,10 +58,31 @@ def init_ui():
     quit_btn = Button(RESOLUTION[0]-int(180*s), int(RESOLUTION[1] * 0.02), int(160*s), int(50*s), "게이 종료", DARK_RED)
     retry_btn = Button(RESOLUTION[0]//2 - int(150*s), int(RESOLUTION[1] * 0.8), int(300*s), int(80*s), "다시 조이기", BLUE)
     next_round_btn = Button(RESOLUTION[0]//2 - int(150*s), RESOLUTION[1]//2 + int(60*s), int(300*s), int(80*s), "다음라운드", BLUE)
+    
+    # 설정 화면 버튼
+    btn_size = int(50 * s)
+    btn_w_small = int(185 * s)
+    btn_h = int(50 * s)
+    btn_w_large = int(390 * s)
+    btn_h_large = int(60 * s)
+
+    settings_back_btn = Button(s_w//2 + int(10*s), s_h * 0.85, int(140*s), int(80*s), "돌아가기", GRAY)
+    settings_save_btn = Button(s_w//2 - int(150*s), s_h * 0.85, int(140*s), int(80*s), "저장하기", BLUE)
+
+    bgm_vol_down_btn = Button(s_w//2 + int(10*s), s_h * 0.25, btn_size, btn_size, "-", BLUE)
+    bgm_vol_up_btn = Button(s_w//2 + int(90*s), s_h * 0.25, btn_size, btn_size, "+", RED)
+    sfx_vol_down_btn = Button(s_w//2 + int(10*s), s_h * 0.35, btn_size, btn_size, "-", BLUE)
+    sfx_vol_up_btn = Button(s_w//2 + int(90*s), s_h * 0.35, btn_size, btn_size, "+", RED)
+    
+    display_mode_window_btn = Button(s_w//2 - int(195*s), s_h * 0.48, btn_w_small, btn_h, "창 모드", GRAY)
+    display_mode_fullscreen_btn = Button(s_w//2 + int(10*s), s_h * 0.48, btn_w_small, btn_h, "전체화면", GRAY)
+    
+    settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.6, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
+    settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.7, btn_w_large, btn_h_large, "게이 종료", DARK_RED)
 
 def update_display_mode():
     """현재 display_mode_setting에 따라 화면 모드를 변경합니다."""
-    global display_surface, RESOLUTION, background_image, aigonan_gif_frames, shop_pos, settings_pos
+    global display_surface, RESOLUTION, background_image, aigonan_gif_frames
     global GRID_SIZE, building_image, mte21_image, mte22_image, projectile_images, enemy_path
     
     old_grid_size = GRID_SIZE
@@ -83,14 +118,6 @@ def update_display_mode():
     init_fonts(RESOLUTION[1])
     init_ui()
     
-    # 게임 중 해상도 변경 시 팝업 위치 재조정
-    try:
-        shop_pos[0] = (RESOLUTION[0] - 650) // 2
-        shop_pos[1] = int(RESOLUTION[1] * 0.15)
-        settings_pos[0] = (RESOLUTION[0] - 450) // 2
-        settings_pos[1] = (RESOLUTION[1] - 450) // 2
-    except: pass # 게임 시작 전이라 변수가 없을 경우 무시
-
     # 게임 진행 중일 경우 엔티티 위치 및 크기 재조정
     if game_state_mode == STATE_PLAYING:
         # 경로 업데이트
@@ -118,13 +145,6 @@ def update_display_mode():
         for p in projectiles: p.pos = p.pos * (GRID_SIZE / old_grid_size)
 
 projectile_images = {}
-update_display_mode() # 프로그램 시작 시 기본 화면 모드(창 모드)로 설정
-pygame.display.set_caption("케인 디펜스")
-
-# 현재 사용 중인 비디오 드라이버 출력 (예: windows, x11, cocoa 등 - 하드웨어 가속 백엔드 확인용)
-print(f"Video Driver: {pygame.display.get_driver()}")
-
-clock = pygame.time.Clock()
 
 # --- 유틸리티 함수 ---
 def draw_text_with_outline(surface, text, font, pos, text_color, outline_color):
@@ -230,8 +250,6 @@ def load_maps():
     if not available_maps:
         available_maps.append({"name": "기본 맵", "path": [[1,13], [1,1], [3,1], [3,12], [5,12], [5,1], [22,1], [22,12], [7,12], [7,3], [20,3], [20,10], [9,10], [9,5], [18,5], [18,8], [11,8]]})
 
-load_maps()
-
 # --- 입력 팝업 함수 ---
 def show_input_dialog(surface, prompt):
     """사용자로부터 숫자를 입력받는 모달 대화상자를 표시합니다."""
@@ -268,16 +286,17 @@ def show_input_dialog(surface, prompt):
 # --- 게임 리셋 ---
 def reset_game(target_state=STATE_PLAYING):
     global gold, damage_level, hp_level, range_level, game_speed, virtual_elapsed_time, current_round, selected_tower_type, time_left, gif_frame_idx, round_gold_value, range_gold_val, enemies_to_spawn_this_round, enemies_spawned_this_round
-    global enemies, towers, projectiles, round_start_time, game_state_mode, nexus, shop_open, jukku_confirm_open, last_spawn_time, is_break_time, shop_pos, is_dragging_shop, drag_offset, settings_open, settings_pos, is_dragging_settings, drag_offset_settings, show_skip_button
+    global enemies, towers, projectiles, round_start_time, game_state_mode, nexus, shop_open, jukku_confirm_open, last_spawn_time, is_break_time, shop_pos, is_dragging_shop, drag_offset, show_skip_button
     global ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count
     global is_overtime, overtime_start_time, enemy_path
+    global damage_gold_val, hp_gold_val
     gold = 999999 if CHEAT_MODE else 300
     round_gold_value = 15  # [복리 시스템] 마리당 지급 골드 초기값
     damage_level, hp_level, range_level, game_speed, virtual_elapsed_time, current_round = 1, 1, 1, 1, 0.0, 1
-    range_gold_val = 150
+    damage_gold_val, hp_gold_val, range_gold_val = 50, 200, 150
     time_left = 10 + (current_round * 5)
     round_start_time, enemies, towers, projectiles = 0.0, [], [], []
-    game_state_mode, shop_open, settings_open, jukku_confirm_open, selected_tower_type, gif_frame_idx = target_state, False, False, False, "PRINCESS", 0
+    game_state_mode, shop_open, jukku_confirm_open, selected_tower_type, gif_frame_idx = target_state, False, False, "PRINCESS", 0
     
     # 현재 선택된 맵 경로 로드
     raw_path = available_maps[current_map_index]["path"]
@@ -285,338 +304,470 @@ def reset_game(target_state=STATE_PLAYING):
     
     last_spawn_time, is_break_time, nexus = 0, True, Nexus(enemy_path[-1], building_image)
     shop_pos, is_dragging_shop, drag_offset = [(RESOLUTION[0] - 650) // 2, int(RESOLUTION[1] * 0.15)], False, [0, 0]
-    settings_pos, is_dragging_settings, drag_offset_settings = [(RESOLUTION[0] - 450) // 2, (RESOLUTION[1] - 450) // 2], False, [0, 0]
     ending_sound_played, quit_confirm_open, sell_confirm_open, tower_to_sell, boss_spawn_count = False, False, False, None, 0
     is_overtime, overtime_start_time, show_skip_button, enemies_to_spawn_this_round, enemies_spawned_this_round = False, 0, False, 0, 0
 
-reset_game(STATE_MAP_SELECT)
-
-# --- 메인 루프 ---
-running = True
-while running:
-    dt = clock.tick(FPS) / 1000.0; dt = min(dt, 0.1) # [버그 수정] 렉 걸릴 때 순간이동 방지
-    mx, my = pygame.mouse.get_pos(); gmx, gmy = (mx//GRID_SIZE)*GRID_SIZE, (my//GRID_SIZE)*GRID_SIZE
-    can_place = (not is_on_path((gmx+GRID_SIZE//2, gmy+GRID_SIZE//2), enemy_path)) and (not any(t.rect.topleft == (gmx, gmy) for t in towers))
+def load_game_config():
+    """게임 설정을 JSON 파일에서 불러옵니다."""
+    global BGM_VOL, SFX_VOL, display_mode_setting, CHEAT_MODE
     
-    shop_rect = pygame.Rect(shop_pos[0], shop_pos[1], 650, 500); sdb = pygame.Rect(shop_pos[0], shop_pos[1], 650, 60)
-    close_shop_btn = Button(shop_pos[0] + 580, shop_pos[1] + 10, 60, 40, "X", GRAY)
-    tower_btns = [Button(shop_pos[0]+25, shop_pos[1]+100, 140, 50, "이걸 왜쏴 ㅋㅋ", BLUE, "PRINCESS"), Button(shop_pos[0]+175, shop_pos[1]+100, 140, 50, "집게이사장", PURPLE, "DUCHESS"), Button(shop_pos[0]+325, shop_pos[1]+100, 140, 50, "-3000로베로스", BLACK, "CANON"), Button(shop_pos[0]+475, shop_pos[1]+100, 140, 50, "지누텔라", BROWN, "JINUTELLA")]
-    up_dmg_btn = Button(shop_pos[0]+30, shop_pos[1]+220, 280, 60, f"공격 강화 ({damage_gold_val}G)", RED)
-    up_hp_btn = Button(shop_pos[0]+340, shop_pos[1]+220, 280, 60, f"체력 UP ({hp_gold_val}G)", GREEN)
-    up_range_btn = Button(shop_pos[0]+30, shop_pos[1]+300, 590, 60, f"사거리 증가 ({range_gold_val}G)", CYAN)
-    settings_rect = pygame.Rect(settings_pos[0], settings_pos[1], 450, 520)
-    sdb_settings = pygame.Rect(settings_pos[0], settings_pos[1], 450, 60)
-    close_settings_btn = Button(settings_pos[0] + 380, settings_pos[1] + 10, 60, 40, "X", GRAY)
-    bgm_vol_down_btn = Button(settings_pos[0] + 240, settings_pos[1] + 80, 50, 50, "-", BLUE)
-    bgm_vol_up_btn = Button(settings_pos[0] + 320, settings_pos[1] + 80, 50, 50, "+", RED)
-    sfx_vol_down_btn = Button(settings_pos[0] + 240, settings_pos[1] + 150, 50, 50, "-", BLUE)
-    sfx_vol_up_btn = Button(settings_pos[0] + 320, settings_pos[1] + 150, 50, 50, "+", RED)
-    
-    display_mode_y = settings_pos[1] + 260
-    display_mode_window_btn = Button(settings_pos[0] + 30, display_mode_y, 185, 50, "창 모드", GRAY)
-    display_mode_fullscreen_btn = Button(settings_pos[0] + 235, display_mode_y, 185, 50, "전체화면", GRAY)
+    defaults = {"bgm_volume": 0.3, "sfx_volume": 0.5, "display_mode": 0, "cheat_mode": False}
+    config = defaults.copy()
 
-    settings_jukku_btn = Button(settings_pos[0] + 30, settings_pos[1] + 340, 390, 60, "주꾸다시 (자폭)", DARK_RED)
-    settings_quit_btn = Button(settings_pos[0] + 30, settings_pos[1] + 410, 390, 60, "게이 종료", DARK_RED)
-    
-    # 설정창 내 텍스트 클릭을 위한 Rect 미리 계산
-    bgm_text_rect = get_text_surface(f"BGM 볼륨: {int(BGM_VOL * 100)}%", Fonts.BTN_LARGE, BLACK).get_rect(topleft=(settings_pos[0] + 40, settings_pos[1] + 95))
-    sfx_text_rect = get_text_surface(f"효과음 볼륨: {int(SFX_VOL * 100)}%", Fonts.BTN_LARGE, BLACK).get_rect(topleft=(settings_pos[0] + 40, settings_pos[1] + 165))
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                loaded_config = json.load(f)
+                config.update(loaded_config)
+        except:
+            pass
 
-    # --- 이벤트 처리 ---
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT: running = False
-        if event.type == pygame.VIDEORESIZE:
-            if display_mode_setting == 0:
-                RESOLUTION = (event.w, event.h)
-                display_surface = pygame.display.set_mode(RESOLUTION, pygame.DOUBLEBUF | pygame.RESIZABLE)
-                background_image = load_smart_image("image/yousuck", RESOLUTION)
-                aigonan_gif_frames = load_gif_frames_21_9("mte21.gif", RESOLUTION[0])
-                init_fonts(RESOLUTION[1])
-                init_ui()
+    BGM_VOL = config["bgm_volume"]
+    SFX_VOL = config["sfx_volume"]
+    display_mode_setting = config["display_mode"]
+    CHEAT_MODE = config["cheat_mode"]
+    
+    mte_config.CHEAT_MODE = CHEAT_MODE
+    if pygame.mixer.get_init():
+        pygame.mixer.music.set_volume(BGM_VOL)
+
+def save_game_config():
+    """현재 게임 설정을 JSON 파일에 저장합니다."""
+    config_to_save = {
+        "bgm_volume": BGM_VOL,
+        "sfx_volume": SFX_VOL,
+        "display_mode": display_mode_setting
+    }
+    existing_config = {}
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                existing_config = json.load(f)
+        except: pass
+    
+    existing_config.update(config_to_save)
+    
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(existing_config, f, indent=4)
+    except Exception as e:
+        print(f"Error saving config: {e}")
+
+def main(skip_intro=False):
+    global running, clock
+    global gold, damage_level, hp_level, range_level, game_speed, virtual_elapsed_time, current_round, round_gold_value
+    global damage_gold_val, hp_gold_val, range_gold_val, enemies, towers, projectiles, nexus
+    global is_break_time, round_start_time, last_spawn_time, boss_spawn_count, enemies_spawned_this_round, enemies_to_spawn_this_round
+    global shop_open, jukku_confirm_open, quit_confirm_open, sell_confirm_open, tower_to_sell, show_save_feedback_timer, save_confirm_open, initial_settings
+    global is_dragging_shop, drag_offset, shop_pos
+    global game_state_mode, current_map_index, selected_tower_type, show_skip_button, is_overtime, overtime_start_time, ending_sound_played, state_before_settings
+    global BGM_VOL, SFX_VOL, display_mode_setting, RESOLUTION, background_image, aigonan_gif_frames, gif_frame_idx, display_surface
+
+    load_game_config()
+    load_maps()
+    update_display_mode() # 프로그램 시작 시 기본 화면 모드(창 모드)로 설정
+    pygame.display.set_caption("케인 디펜스")
+
+    # 현재 사용 중인 비디오 드라이버 출력 (예: windows, x11, cocoa 등 - 하드웨어 가속 백엔드 확인용)
+    print(f"Video Driver: {pygame.display.get_driver()}")
+
+    clock = pygame.time.Clock()
+    
+    initial_state = STATE_MAP_SELECT if skip_intro else STATE_START_SCREEN
+    reset_game(initial_state)
+
+    # --- 메인 루프 ---
+    running = True
+    while running:
+        dt = clock.tick(FPS) / 1000.0; dt = min(dt, 0.1) # [버그 수정] 렉 걸릴 때 순간이동 방지
         
-        if CHEAT_MODE and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_F1: gold += 10000000
-            if event.key == pygame.K_F2: damage_level += 5
-            if event.key == pygame.K_F3: nexus.hp = nexus.max_hp
-            if event.key == pygame.K_F4: enemies = []
-            if event.key == pygame.K_F5: is_break_time = not is_break_time; current_round = current_round+1 if not is_break_time else current_round; round_start_time = virtual_elapsed_time; enemies = []
+        if show_save_feedback_timer > 0:
+            show_save_feedback_timer -= dt
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            # --- 최상위 팝업 및 패널 처리 (클릭 이벤트 선점) ---
-            if quit_confirm_open:
-                qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
-                if pygame.Rect(qx+60, qy+140, 160, 60).collidepoint(mx, my): running = False
-                elif pygame.Rect(qx+280, qy+140, 160, 60).collidepoint(mx, my): quit_confirm_open = False
-                continue
-            if sell_confirm_open:
-                sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
-                if pygame.Rect(sx+60, sy+140, 160, 60).collidepoint(mx, my): 
-                    if tower_to_sell in towers: gold += int(tower_to_sell.cost * 0.7); towers.remove(tower_to_sell)
-                    sell_confirm_open, tower_to_sell = False, None
-                elif pygame.Rect(sx+280, sy+140, 160, 60).collidepoint(mx, my): sell_confirm_open, tower_to_sell = False, None
-                continue
-            if jukku_confirm_open:
-                px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
-                if pygame.Rect(px+60, py+140, 160, 60).collidepoint(mx, my): pygame.mixer.music.stop(); game_state_mode = STATE_AIGONAN; jukku_confirm_open = False; (aigonan_sound.play() if aigonan_sound else None)
-                elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): jukku_confirm_open = False
-                continue
+        mx, my = pygame.mouse.get_pos(); gmx, gmy = (mx//GRID_SIZE)*GRID_SIZE, (my//GRID_SIZE)*GRID_SIZE
+        can_place = (not is_on_path((gmx+GRID_SIZE//2, gmy+GRID_SIZE//2), enemy_path)) and (not any(t.rect.topleft == (gmx, gmy) for t in towers))
+        
+        shop_rect = pygame.Rect(shop_pos[0], shop_pos[1], 650, 500); sdb = pygame.Rect(shop_pos[0], shop_pos[1], 650, 60)
+        close_shop_btn = Button(shop_pos[0] + 580, shop_pos[1] + 10, 60, 40, "X", GRAY)
+        tower_btns = [Button(shop_pos[0]+25, shop_pos[1]+100, 140, 50, "이걸 왜쏴 ㅋㅋ", BLUE, "PRINCESS"), Button(shop_pos[0]+175, shop_pos[1]+100, 140, 50, "집게이사장", PURPLE, "DUCHESS"), Button(shop_pos[0]+325, shop_pos[1]+100, 140, 50, "-3000로베로스", BLACK, "CANON"), Button(shop_pos[0]+475, shop_pos[1]+100, 140, 50, "지누텔라", BROWN, "JINUTELLA")]
+        up_dmg_btn = Button(shop_pos[0]+30, shop_pos[1]+220, 280, 60, f"공격 강화 ({damage_gold_val}G)", RED)
+        up_hp_btn = Button(shop_pos[0]+340, shop_pos[1]+220, 280, 60, f"체력 UP ({hp_gold_val}G)", GREEN)
+        up_range_btn = Button(shop_pos[0]+30, shop_pos[1]+300, 590, 60, f"사거리 증가 ({range_gold_val}G)", CYAN)
+
+        # --- 이벤트 처리 ---
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: running = False
+            if event.type == pygame.VIDEORESIZE:
+                if display_mode_setting == 0:
+                    RESOLUTION = (event.w, event.h)
+                    display_surface = pygame.display.set_mode(RESOLUTION, pygame.DOUBLEBUF | pygame.RESIZABLE)
+                    background_image = load_smart_image("image/yousuck", RESOLUTION)
+                    aigonan_gif_frames = load_gif_frames_21_9("mte21.gif", RESOLUTION[0])
+                    init_fonts(RESOLUTION[1])
+                    init_ui()
             
-            if settings_open:
-                if close_settings_btn.rect.collidepoint(mx, my): settings_open = False; continue
-                if sdb_settings.collidepoint(mx, my): is_dragging_settings, drag_offset_settings = True, [settings_pos[0]-mx, settings_pos[1]-my]; continue
-                if bgm_vol_down_btn.rect.collidepoint(mx, my): BGM_VOL = max(0.0, BGM_VOL - 0.1); pygame.mixer.music.set_volume(BGM_VOL)
-                if bgm_vol_up_btn.rect.collidepoint(mx, my): BGM_VOL = min(1.0, BGM_VOL + 0.1); pygame.mixer.music.set_volume(BGM_VOL)
-                if sfx_vol_down_btn.rect.collidepoint(mx, my): SFX_VOL = max(0.0, SFX_VOL - 0.1); [s.set_volume(SFX_VOL) for s in [aigonan_sound, oh_sound, bbolong_sound] if s]
-                if sfx_vol_up_btn.rect.collidepoint(mx, my): SFX_VOL = min(1.0, SFX_VOL + 0.1); [s.set_volume(SFX_VOL) for s in [aigonan_sound, oh_sound, bbolong_sound] if s]
-                if bgm_text_rect.collidepoint(mx, my):
-                    val = show_input_dialog(display_surface, "BGM 볼륨 (0-100)");
-                    if val is not None: BGM_VOL = max(0.0, min(1.0, val / 100.0)); pygame.mixer.music.set_volume(BGM_VOL)
-                if sfx_text_rect.collidepoint(mx, my):
-                    val = show_input_dialog(display_surface, "SFX 볼륨 (0-100)");
-                    if val is not None: SFX_VOL = max(0.0, min(1.0, val / 100.0)); [s.set_volume(SFX_VOL) for s in [aigonan_sound, oh_sound, bbolong_sound] if s]
-                if display_mode_window_btn.rect.collidepoint(mx, my) and display_mode_setting != 0: display_mode_setting = 0; update_display_mode()
-                if display_mode_fullscreen_btn.rect.collidepoint(mx, my) and display_mode_setting != 1: display_mode_setting = 1; update_display_mode()
-                if settings_jukku_btn.rect.collidepoint(mx, my): jukku_confirm_open = True
-                if settings_quit_btn.rect.collidepoint(mx, my): quit_confirm_open = True
-                if settings_rect.collidepoint(mx, my): continue
+            if CHEAT_MODE and event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F1: gold += 10000000
+                if event.key == pygame.K_F2: damage_level += 5
+                if event.key == pygame.K_F3: nexus.hp = nexus.max_hp
+                if event.key == pygame.K_F4: enemies = []
+                if event.key == pygame.K_F5: is_break_time = not is_break_time; current_round = current_round+1 if not is_break_time else current_round; round_start_time = virtual_elapsed_time; enemies = []
 
-            if open_settings_btn.rect.collidepoint(mx, my): settings_open = not settings_open; continue
-
-            # --- 게임 상태별 처리 ---
-            if game_state_mode == STATE_START_SCREEN and start_btn.rect.collidepoint(mx, my):
-                game_state_mode = STATE_MAP_SELECT
-            elif game_state_mode == STATE_MAP_SELECT:
-                if map_prev_btn.rect.collidepoint(mx, my):
-                    current_map_index = (current_map_index - 1) % len(available_maps)
-                elif map_next_btn.rect.collidepoint(mx, my):
-                    current_map_index = (current_map_index + 1) % len(available_maps)
-                elif map_select_confirm_btn.rect.collidepoint(mx, my):
-                    reset_game(STATE_PLAYING)
-                    play_round_music(current_round)
-                elif map_select_back_btn.rect.collidepoint(mx, my):
-                    game_state_mode = STATE_START_SCREEN
-
-            elif game_state_mode == STATE_PLAYING:
-                if show_skip_button and next_round_btn.rect.collidepoint(mx, my):
-                    enemies.clear() # 타임아웃 등으로 남은 적이 있다면 제거
-                    is_break_time, current_round, round_start_time, gold = True, current_round + 1, virtual_elapsed_time, gold + (100 * (current_round + 1))
-                    play_round_music(current_round)
-                    show_skip_button = False
-                    continue
-                if current_round > 40 and quit_btn.rect.collidepoint(mx, my): quit_confirm_open = True; continue
-                if event.button == 3:
-                    for t in towers:
-                        if t.rect.collidepoint(mx, my): tower_to_sell, sell_confirm_open = t, True; break
-                    continue
-                if shop_open:
-                    if close_shop_btn.rect.collidepoint(mx, my): shop_open = False; continue
-                    if sdb.collidepoint(mx, my): is_dragging_shop, drag_offset = True, [shop_pos[0]-mx, shop_pos[1]-my]; continue
-                    for b in tower_btns:
-                        if b.rect.collidepoint(mx, my): selected_tower_type = b.val
-                    if up_dmg_btn.rect.collidepoint(mx, my) and gold >= damage_gold_val: gold -= damage_gold_val; damage_level += 1; damage_gold_val = int(15 + damage_gold_val * 1.5)
-                    if up_hp_btn.rect.collidepoint(mx, my) and gold >= hp_gold_val: gold -= hp_gold_val; hp_level += 1; nexus.max_hp += 5000; nexus.hp += 5000; hp_gold_val = int(200 + hp_gold_val * 1.5)
-                    if up_range_btn.rect.collidepoint(mx, my) and gold >= range_gold_val: gold -= range_gold_val; range_level += 1; range_gold_val = int(150 + range_gold_val * 1.5)
-                    if shop_rect.collidepoint(mx, my): continue
-                if open_shop_btn.rect.collidepoint(mx, my): shop_open = not shop_open; continue
-                if speed_btn.rect.collidepoint(mx, my): game_speed = 2 if game_speed==1 else (4 if game_speed==2 else 1); speed_btn.text = f"배속: {game_speed}x"
-                elif can_place and gold >= TOWER_DATA[selected_tower_type]["cost"]: 
-                    towers.append(Tower(mx, my, selected_tower_type)); gold -= TOWER_DATA[selected_tower_type]["cost"]
-            elif game_state_mode == STATE_AIGONAN and retry_btn.rect.collidepoint(mx, my):
-                reset_game()
-                play_round_music(current_round)
-        if event.type == pygame.MOUSEBUTTONUP: is_dragging_shop, is_dragging_settings = False, False
-        if event.type == pygame.MOUSEMOTION:
-            if is_dragging_shop: shop_pos[0], shop_pos[1] = mx + drag_offset[0], my + drag_offset[1]
-            if is_dragging_settings: settings_pos[0], settings_pos[1] = mx + drag_offset_settings[0], my + drag_offset_settings[1]
-
-    # --- 업데이트 로직 ---
-    if game_state_mode == STATE_PLAYING and not any([jukku_confirm_open, quit_confirm_open, sell_confirm_open]):
-        virtual_elapsed_time += dt * game_speed; c_time = virtual_elapsed_time - round_start_time
-        if current_round <= 40:
-            if is_break_time:
-                time_left = max(0, 15 - c_time)
-                if time_left <= 0: 
-                    is_break_time, round_start_time, last_spawn_time, boss_spawn_count, show_skip_button = False, virtual_elapsed_time, virtual_elapsed_time, 0, False
-                    if current_round > 1: round_gold_value = int(round_gold_value * 1.5) # [복리] 라운드 시작 시 가치 상승
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                # --- 최상위 팝업 및 패널 처리 (클릭 이벤트 선점) ---
+                if save_confirm_open:
+                    sc_w, sc_h = 600, 250
+                    sc_x, sc_y = (RESOLUTION[0]-sc_w)//2, (RESOLUTION[1]-sc_h)//2
                     
-                    # 현재 라운드에 스폰할 몬스터 수 계산
-                    enemies_spawned_this_round = 0
-                    if current_round == 40:
-                        enemies_to_spawn_this_round = 10
-                    else:
-                        spawn_interval_secs = max(0.4, 1.5 - current_round*0.05)
-                        enemies_to_spawn_this_round = math.floor(45 / spawn_interval_secs) if spawn_interval_secs > 0 else 50
+                    save_btn_rect = pygame.Rect(sc_x + 30, sc_y + 150, 160, 60)
+                    dont_save_btn_rect = pygame.Rect(sc_x + 220, sc_y + 150, 160, 60)
+                    cancel_btn_rect = pygame.Rect(sc_x + 410, sc_y + 150, 160, 60)
 
-            elif is_overtime:
-                time_left = 0
-                if not enemies:
-                    is_overtime = False
-                    show_skip_button = True
-                elif (virtual_elapsed_time - overtime_start_time >= 60):
-                    # 60초 초과 시에도 버튼을 표시하여 수동으로 넘어가도록 변경
-                    is_overtime = False
-                    show_skip_button = True
-            else:
-                time_left = max(0, 45 - c_time)
-                all_spawned = enemies_spawned_this_round >= enemies_to_spawn_this_round
+                    if event.button == 1:
+                        if save_btn_rect.collidepoint(mx, my):
+                            save_game_config()
+                            game_state_mode = state_before_settings
+                            save_confirm_open = False
+                        elif dont_save_btn_rect.collidepoint(mx, my):
+                            # 설정 화면 진입 시점의 설정으로 되돌림
+                            BGM_VOL = initial_settings.get("bgm_volume", 0.3)
+                            SFX_VOL = initial_settings.get("sfx_volume", 0.5)
+                            pygame.mixer.music.set_volume(BGM_VOL)
+                            if display_mode_setting != initial_settings.get("display_mode", 0):
+                                display_mode_setting = initial_settings.get("display_mode", 0)
+                                update_display_mode()
+                            game_state_mode = state_before_settings
+                            save_confirm_open = False
+                        elif cancel_btn_rect.collidepoint(mx, my):
+                            save_confirm_open = False
+                    continue
+                if quit_confirm_open:
+                    qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
+                    if pygame.Rect(qx+60, qy+140, 160, 60).collidepoint(mx, my): running = False
+                    elif pygame.Rect(qx+280, qy+140, 160, 60).collidepoint(mx, my): quit_confirm_open = False
+                    continue
+                if sell_confirm_open:
+                    sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
+                    if pygame.Rect(sx+60, sy+140, 160, 60).collidepoint(mx, my): 
+                        if tower_to_sell in towers: gold += int(tower_to_sell.cost * 0.7); towers.remove(tower_to_sell)
+                        sell_confirm_open, tower_to_sell = False, None
+                    elif pygame.Rect(sx+280, sy+140, 160, 60).collidepoint(mx, my): sell_confirm_open, tower_to_sell = False, None
+                    continue
+                if jukku_confirm_open:
+                    px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
+                    if pygame.Rect(px+60, py+140, 160, 60).collidepoint(mx, my): pygame.mixer.music.stop(); game_state_mode = STATE_AIGONAN; jukku_confirm_open = False; (aigonan_sound.play() if aigonan_sound else None)
+                    elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): jukku_confirm_open = False
+                    continue
                 
-                if not all_spawned:
-                    if current_round == 40:
-                        if boss_spawn_count < 10 and virtual_elapsed_time - last_spawn_time > 2.0: enemies.append(Enemy(enemy_path, 40, True)); boss_spawn_count += 1; enemies_spawned_this_round += 1; last_spawn_time = virtual_elapsed_time
-                    elif virtual_elapsed_time - last_spawn_time > max(0.4, 1.5 - current_round*0.05):
-                        enemies.append(Enemy(enemy_path, current_round, (current_round%5==0 and not any(e.is_boss for e in enemies)))); enemies_spawned_this_round += 1; last_spawn_time = virtual_elapsed_time
-                
-                if all_spawned and not enemies and not is_overtime:
-                    show_skip_button = True
+                if open_settings_btn.rect.collidepoint(mx, my):
+                    state_before_settings = game_state_mode
+                    game_state_mode = STATE_SETTINGS
+                    # 설정 화면 진입 시 현재 설정값 저장
+                    initial_settings = {
+                        "bgm_volume": BGM_VOL,
+                        "sfx_volume": SFX_VOL,
+                        "display_mode": display_mode_setting
+                    }
+                    continue
 
-                if time_left <= 0:
+                # --- 게임 상태별 처리 ---
+                if game_state_mode == STATE_START_SCREEN and start_btn.rect.collidepoint(mx, my):
+                    game_state_mode = STATE_MAP_SELECT
+                elif game_state_mode == STATE_MAP_SELECT:
+                    if map_prev_btn.rect.collidepoint(mx, my):
+                        current_map_index = (current_map_index - 1) % len(available_maps)
+                    elif map_next_btn.rect.collidepoint(mx, my):
+                        current_map_index = (current_map_index + 1) % len(available_maps)
+                    elif map_select_confirm_btn.rect.collidepoint(mx, my):
+                        reset_game(STATE_PLAYING)
+                        play_round_music(current_round)
+                    elif map_select_back_btn.rect.collidepoint(mx, my):
+                        game_state_mode = STATE_START_SCREEN
+
+                elif game_state_mode == STATE_PLAYING:
+                    if show_skip_button and next_round_btn.rect.collidepoint(mx, my):
+                        enemies.clear() # 타임아웃 등으로 남은 적이 있다면 제거
+                        is_break_time, current_round, round_start_time, gold = True, current_round + 1, virtual_elapsed_time, gold + (100 * (current_round + 1))
+                        play_round_music(current_round)
+                        show_skip_button = False
+                        continue
+                    if current_round > 40 and quit_btn.rect.collidepoint(mx, my): quit_confirm_open = True; continue
+                    if event.button == 3:
+                        for t in towers:
+                            if t.rect.collidepoint(mx, my): tower_to_sell, sell_confirm_open = t, True; break
+                        continue
+                    if shop_open:
+                        if close_shop_btn.rect.collidepoint(mx, my): shop_open = False; continue
+                        if sdb.collidepoint(mx, my): is_dragging_shop, drag_offset = True, [shop_pos[0]-mx, shop_pos[1]-my]; continue
+                        for b in tower_btns:
+                            if b.rect.collidepoint(mx, my): selected_tower_type = b.val
+                        if up_dmg_btn.rect.collidepoint(mx, my) and gold >= damage_gold_val: gold -= damage_gold_val; damage_level += 1; damage_gold_val = int(15 + damage_gold_val * 1.5)
+                        if up_hp_btn.rect.collidepoint(mx, my) and gold >= hp_gold_val: gold -= hp_gold_val; hp_level += 1; nexus.max_hp += 5000; nexus.hp += 5000; hp_gold_val = int(200 + hp_gold_val * 1.5)
+                        if up_range_btn.rect.collidepoint(mx, my) and gold >= range_gold_val: gold -= range_gold_val; range_level += 1; range_gold_val = int(150 + range_gold_val * 1.5)
+                        if shop_rect.collidepoint(mx, my): continue
+                    if open_shop_btn.rect.collidepoint(mx, my): shop_open = not shop_open; continue
+                    if speed_btn.rect.collidepoint(mx, my): game_speed = 2 if game_speed==1 else (4 if game_speed==2 else 1); speed_btn.text = f"배속: {game_speed}x"
+                    elif can_place and gold >= TOWER_DATA[selected_tower_type]["cost"]: 
+                        towers.append(Tower(mx, my, selected_tower_type)); gold -= TOWER_DATA[selected_tower_type]["cost"]
+                elif game_state_mode == STATE_AIGONAN and retry_btn.rect.collidepoint(mx, my):
+                    reset_game()
+                    play_round_music(current_round)
+                elif game_state_mode == STATE_SETTINGS:
+                    if settings_back_btn.rect.collidepoint(mx, my):
+                        # 변경사항이 있는지 확인
+                        has_changes = (
+                            initial_settings.get("bgm_volume") != BGM_VOL or
+                            initial_settings.get("sfx_volume") != SFX_VOL or
+                            initial_settings.get("display_mode") != display_mode_setting
+                        )
+                        if has_changes:
+                            save_confirm_open = True
+                        else:
+                            game_state_mode = state_before_settings
+                    elif settings_save_btn.rect.collidepoint(mx, my):
+                        save_game_config()
+                        show_save_feedback_timer = 2 # 2초 동안 피드백 표시
+                    elif bgm_vol_down_btn.rect.collidepoint(mx, my): BGM_VOL = max(0.0, round(BGM_VOL - 0.1, 1)); pygame.mixer.music.set_volume(BGM_VOL)
+                    elif bgm_vol_up_btn.rect.collidepoint(mx, my): BGM_VOL = min(1.0, round(BGM_VOL + 0.1, 1)); pygame.mixer.music.set_volume(BGM_VOL)
+                    elif sfx_vol_down_btn.rect.collidepoint(mx, my): SFX_VOL = max(0.0, round(SFX_VOL - 0.1, 1)); [s.set_volume(SFX_VOL) for s in [aigonan_sound, oh_sound, bbolong_sound] if s]
+                    elif sfx_vol_up_btn.rect.collidepoint(mx, my): SFX_VOL = min(1.0, round(SFX_VOL + 0.1, 1)); [s.set_volume(SFX_VOL) for s in [aigonan_sound, oh_sound, bbolong_sound] if s]
+                    elif display_mode_window_btn.rect.collidepoint(mx, my) and display_mode_setting != 0: display_mode_setting = 0; update_display_mode()
+                    elif display_mode_fullscreen_btn.rect.collidepoint(mx, my) and display_mode_setting != 1: display_mode_setting = 1; update_display_mode()
+                    elif settings_jukku_btn.rect.collidepoint(mx, my): jukku_confirm_open = True
+                    elif settings_quit_btn.rect.collidepoint(mx, my): quit_confirm_open = True
+
+            if event.type == pygame.MOUSEBUTTONUP: is_dragging_shop = False
+            if event.type == pygame.MOUSEMOTION:
+                if is_dragging_shop: shop_pos[0], shop_pos[1] = mx + drag_offset[0], my + drag_offset[1]
+
+        # --- 업데이트 로직 ---
+        if game_state_mode == STATE_PLAYING and not any([jukku_confirm_open, quit_confirm_open, sell_confirm_open]):
+            virtual_elapsed_time += dt * game_speed; c_time = virtual_elapsed_time - round_start_time
+            if current_round <= 40:
+                if is_break_time:
+                    time_left = max(0, 15 - c_time)
+                    if time_left <= 0: 
+                        is_break_time, round_start_time, last_spawn_time, boss_spawn_count, show_skip_button = False, virtual_elapsed_time, virtual_elapsed_time, 0, False
+                        if current_round > 1: round_gold_value = int(round_gold_value * 1.5) # [복리] 라운드 시작 시 가치 상승
+                        
+                        # 현재 라운드에 스폰할 몬스터 수 계산
+                        enemies_spawned_this_round = 0
+                        if current_round == 40:
+                            enemies_to_spawn_this_round = 10
+                        else:
+                            spawn_interval_secs = max(0.4, 1.5 - current_round*0.05)
+                            enemies_to_spawn_this_round = math.floor(45 / spawn_interval_secs) if spawn_interval_secs > 0 else 50
+
+                elif is_overtime:
+                    time_left = 0
+                    if not enemies:
+                        is_overtime = False
+                        show_skip_button = True
+                    elif (virtual_elapsed_time - overtime_start_time >= 60):
+                        # 60초 초과 시에도 버튼을 표시하여 수동으로 넘어가도록 변경
+                        is_overtime = False
+                        show_skip_button = True
+                else:
+                    time_left = max(0, 45 - c_time)
+                    all_spawned = enemies_spawned_this_round >= enemies_to_spawn_this_round
+                    
                     if not all_spawned:
-                        pass
-                    elif enemies:
-                        is_overtime = True
-                        overtime_start_time = virtual_elapsed_time
-        
-        for p in projectiles[:]:
-            p.move(dt, game_speed)
-            if p.reached: projectiles.remove(p)
-        for t in towers:
-            if t.effect_timer > 0: t.effect_timer -= 1 * game_speed * (dt * 144)
-            if t.attack_timer > 0: t.attack_timer -= 1 * game_speed * (dt * 144)
-            else:
-                d = TOWER_DATA[t.type]
-                eff_range = d["range"] + (range_level - 2) * 40
-                for e in enemies:
-                    if math.hypot(e.rect.centerx-t.rect.centerx, e.rect.centery-t.rect.centery) <= eff_range:
-                        if t.type == "JINUTELLA":
-                            t.effect_timer = 12
-                            for e2 in enemies:
-                                if math.hypot(e2.rect.centerx-t.rect.centerx, e2.rect.centery-t.rect.centery) <= eff_range: e2.hp -= get_current_damage(t.type)
-                        else: projectiles.append(Projectile(t.rect.center, e, get_current_damage(t.type), d["p_img"], projectile_images))
-                        t.attack_timer = d["cd"]; break
-        if nexus.attack_timer > 0: nexus.attack_timer -= 1 * game_speed * (dt * 144)
-        else:
-            eff_range = 300 + (range_level - 1) * 20
-            for e in enemies:
-                if math.hypot(e.rect.centerx-nexus.rect.centerx, e.rect.centery-nexus.rect.centery) <= eff_range:
-                    projectiles.append(Projectile(nexus.rect.center, e, get_current_damage("PRINCESS") * 2, "mte23", projectile_images))
-                    nexus.attack_timer = nexus.cd; break
-        for e in enemies[:]:
-            e.move(dt, game_speed)
-            if e.hp <= 0: 
-                gold += round_gold_value * (5 if e.is_boss else 1) # [복리] 적용된 골드 지급
-                if e.is_boss:
-                    if aigonan_sound: aigonan_sound.play()
-                elif bbolong_sound: bbolong_sound.play()
-                enemies.remove(e)
-            elif e.target_idx >= len(enemy_path): 
-                nexus.hp -= 2000 if e.is_boss else 1000; enemies.remove(e)
-                if nexus.hp <= 0: pygame.mixer.music.stop(); game_state_mode = STATE_AIGONAN; (aigonan_sound.play() if aigonan_sound else None)
+                        if current_round == 40:
+                            if boss_spawn_count < 10 and virtual_elapsed_time - last_spawn_time > 2.0: enemies.append(Enemy(enemy_path, 40, True)); boss_spawn_count += 1; enemies_spawned_this_round += 1; last_spawn_time = virtual_elapsed_time
+                        elif virtual_elapsed_time - last_spawn_time > max(0.4, 1.5 - current_round*0.05):
+                            enemies.append(Enemy(enemy_path, current_round, (current_round%5==0 and not any(e.is_boss for e in enemies)))); enemies_spawned_this_round += 1; last_spawn_time = virtual_elapsed_time
+                    
+                    if all_spawned and not enemies and not is_overtime:
+                        show_skip_button = True
 
-    # --- 그리기 ---
-    display_surface.blit(background_image, (0, 0)) if background_image else display_surface.fill(BLACK)
-    if game_state_mode == STATE_START_SCREEN:
-        overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
-        panel_w, panel_h = int(RESOLUTION[0] * 0.8), int(RESOLUTION[1] * 0.8)
-        h_rect = pygame.Rect((RESOLUTION[0] - panel_w)//2, (RESOLUTION[1] - panel_h)//2, panel_w, panel_h)
-        pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
-        title_surf = get_text_surface("케인 디펜스 - GayDefense", Fonts.TITLE, BLACK)
-        display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, h_rect.y + int(panel_h * 0.1)))
-        helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매"]
-        for i, txt in enumerate(helps):
-            display_surface.blit(get_text_surface(txt, Fonts.HELP, BLACK), (h_rect.x + int(panel_w * 0.1), h_rect.y + int(panel_h * 0.25) + i * int(panel_h * 0.08)))
-        start_btn.draw(display_surface)
-        
-    elif game_state_mode == STATE_MAP_SELECT:
-        overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
-        
-        # 맵 선택 UI
-        map_name = available_maps[current_map_index]["name"]
-        map_surf = get_text_surface(f"MAP: {map_name}", Fonts.UI, WHITE)
-        display_surface.blit(map_surf, (RESOLUTION[0]//2 - map_surf.get_width()//2, int(RESOLUTION[1] * 0.2)))
-        
-        # 미리보기
-        preview_rect = pygame.Rect(0, 0, 600, 350)
-        preview_rect.center = (RESOLUTION[0]//2, RESOLUTION[1]//2)
-        pygame.draw.rect(display_surface, WHITE, preview_rect)
-        pygame.draw.rect(display_surface, BLACK, preview_rect, 3)
-        
-        p_path = available_maps[current_map_index]["path"]
-        if p_path:
-            scaled_path = [(preview_rect.x + p[0]*(preview_rect.width/24) + (preview_rect.width/48), preview_rect.y + p[1]*(preview_rect.height/14) + (preview_rect.height/28)) for p in p_path]
-            if len(scaled_path) > 1: pygame.draw.lines(display_surface, BLUE, False, scaled_path, 5)
-            pygame.draw.circle(display_surface, GREEN, (int(scaled_path[0][0]), int(scaled_path[0][1])), 8)
-            pygame.draw.circle(display_surface, RED, (int(scaled_path[-1][0]), int(scaled_path[-1][1])), 8)
+                    if time_left <= 0:
+                        if not all_spawned:
+                            pass
+                        elif enemies:
+                            is_overtime = True
+                            overtime_start_time = virtual_elapsed_time
             
-        map_prev_btn.draw(display_surface)
-        map_next_btn.draw(display_surface)
-        map_select_confirm_btn.draw(display_surface)
-        map_select_back_btn.draw(display_surface)
-        
-    elif game_state_mode == STATE_PLAYING:
-        pygame.draw.lines(display_surface, PATH_COLOR, False, enemy_path, 50)
-        if shop_open and not (shop_rect.collidepoint(mx, my)) and current_round <= 40:
-            ps = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA); pygame.draw.rect(ps, (0,255,0,100) if can_place else (255,0,0,100), (0,0,GRID_SIZE,GRID_SIZE)); display_surface.blit(ps, (gmx, gmy))
-            rv = TOWER_DATA[selected_tower_type]["range"] + (range_level - 1) * 20; rs = pygame.Surface((rv*2, rv*2), pygame.SRCALPHA); pygame.draw.circle(rs, (255,255,255,60), (rv,rv), rv); display_surface.blit(rs, (gmx+GRID_SIZE//2-rv, gmy+GRID_SIZE//2-rv))
-        for t in towers: t.draw(display_surface, range_level)
-        for e in enemies: e.draw(display_surface)
-        for p in projectiles: p.draw(display_surface)
-        nexus.draw(display_surface); open_shop_btn.draw(display_surface); speed_btn.draw(display_surface)
-        display_surface.blit(get_text_surface(f"GOLD: {gold} (마리당: {round_gold_value}G) | 공격 Lv: {damage_level} | HP Lv: {hp_level} | 사거리 Lv: {range_level}", Fonts.UI, BLACK), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.03)))
-        display_surface.blit(get_text_surface(f"{f'라운드 {current_round} 조이고 ' if not is_break_time else '정리좀하고(%s초쯤)' % int(time_left)}| 남은 시간: {int(time_left)}초", Fonts.UI, DARK_RED), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.08)))
-        if shop_open:
-            pygame.draw.rect(display_surface, (230,230,230), shop_rect, border_radius=20); pygame.draw.rect(display_surface, (150,150,150), sdb, border_radius=20); close_shop_btn.draw(display_surface)
-            draw_text_with_outline(display_surface, "★ 타워조이고 ★", Fonts.SHOP_TITLE, (shop_pos[0]+20, shop_pos[1]+15), WHITE, BLACK)
-            for b in tower_btns:
-                b.draw(display_surface, selected_tower_type == b.val)
-                dmg_txt = get_text_surface(f"공격력: {get_current_damage(b.val)}", Fonts.DMG_TEXT, BLACK)
-                display_surface.blit(dmg_txt, (b.rect.centerx - dmg_txt.get_width()//2, b.rect.bottom + 5))
-            up_dmg_btn.draw(display_surface); up_hp_btn.draw(display_surface); up_range_btn.draw(display_surface)
-        if current_round > 40:
-            if not ending_sound_played: pygame.mixer.music.stop(); pygame.mixer.stop(); (oh_sound.play() if oh_sound else None); ending_sound_played = True
-            if mte22_image:
-                m_rect = mte22_image.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2)); display_surface.blit(mte22_image, m_rect)
-                txt = get_text_surface("클(로버핏)리어!", Fonts.CLEAR, YELLOW); display_surface.blit(txt, txt.get_rect(center=m_rect.center))
-                quit_btn.rect.midtop = (m_rect.centerx, m_rect.bottom + 50); quit_btn.draw(display_surface)
-        if show_skip_button:
-            overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,150)); display_surface.blit(overlay, (0,0))
-            reward_txt = get_text_surface(f"라운드 클리어 보상: {100 * (current_round + 1)}G", Fonts.TITLE, YELLOW)
-            display_surface.blit(reward_txt, (RESOLUTION[0]//2 - reward_txt.get_width()//2, RESOLUTION[1]//2 - int(50 * (RESOLUTION[1]/1080.0))))
-            next_round_btn.draw(display_surface)
-    elif game_state_mode == STATE_AIGONAN:
-        display_surface.fill((20, 0, 0))
-        if aigonan_gif_frames:
-            gif_frame_idx = (gif_frame_idx + 1) % len(aigonan_gif_frames)
-            img = aigonan_gif_frames[gif_frame_idx]; display_surface.blit(img, img.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2)))
-        elif mte21_image: display_surface.blit(mte21_image, mte21_image.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2 - 50)))
-        display_surface.blit(get_text_surface("아이고난!", Fonts.GAMEOVER, RED), (RESOLUTION[0]//2-200, int(RESOLUTION[1]*0.15))); retry_btn.draw(display_surface)
-    
-    # --- 전역 UI 및 팝업 그리기 (항상 위에 표시) ---
-    open_settings_btn.draw(display_surface)
-    if settings_open:
-        pygame.draw.rect(display_surface, (230, 230, 230), settings_rect, border_radius=20)
-        pygame.draw.rect(display_surface, (150, 150, 150), sdb_settings, border_radius=20)
-        close_settings_btn.draw(display_surface)
-        draw_text_with_outline(display_surface, "★ 설정조이고 ★", Fonts.SHOP_TITLE, (settings_pos[0] + 20, settings_pos[1] + 15), WHITE, BLACK)
-        display_surface.blit(get_text_surface(f"BGM 볼륨: {int(BGM_VOL * 100)}%", Fonts.BTN_LARGE, BLACK), bgm_text_rect)
-        bgm_vol_down_btn.draw(display_surface); bgm_vol_up_btn.draw(display_surface)
-        display_surface.blit(get_text_surface(f"효과음 볼륨: {int(SFX_VOL * 100)}%", Fonts.BTN_LARGE, BLACK), sfx_text_rect)
-        sfx_vol_down_btn.draw(display_surface); sfx_vol_up_btn.draw(display_surface)
-        display_surface.blit(get_text_surface("화면 설정", Fonts.BTN_LARGE, BLACK), (settings_pos[0] + 40, settings_pos[1] + 225))
-        display_mode_window_btn.draw(display_surface, display_mode_setting == 0)
-        display_mode_fullscreen_btn.draw(display_surface, display_mode_setting == 1)
-        settings_jukku_btn.draw(display_surface); settings_quit_btn.draw(display_surface)
+            for p in projectiles[:]:
+                p.move(dt, game_speed)
+                if p.reached: projectiles.remove(p)
+            for t in towers:
+                if t.effect_timer > 0: t.effect_timer -= 1 * game_speed * (dt * 144)
+                if t.attack_timer > 0: t.attack_timer -= 1 * game_speed * (dt * 144)
+                else:
+                    d = TOWER_DATA[t.type]
+                    eff_range = d["range"] + (range_level - 2) * 40
+                    for e in enemies:
+                        if math.hypot(e.rect.centerx-t.rect.centerx, e.rect.centery-t.rect.centery) <= eff_range:
+                            if t.type == "JINUTELLA":
+                                t.effect_timer = 12
+                                for e2 in enemies:
+                                    if math.hypot(e2.rect.centerx-t.rect.centerx, e2.rect.centery-t.rect.centery) <= eff_range: e2.hp -= get_current_damage(t.type)
+                            else: projectiles.append(Projectile(t.rect.center, e, get_current_damage(t.type), d["p_img"], projectile_images))
+                            t.attack_timer = d["cd"]; break
+            if nexus.attack_timer > 0: nexus.attack_timer -= 1 * game_speed * (dt * 144)
+            else:
+                eff_range = 300 + (range_level - 1) * 20
+                for e in enemies:
+                    if math.hypot(e.rect.centerx-nexus.rect.centerx, e.rect.centery-nexus.rect.centery) <= eff_range:
+                        projectiles.append(Projectile(nexus.rect.center, e, get_current_damage("PRINCESS") * 2, "mte23", projectile_images))
+                        nexus.attack_timer = nexus.cd; break
+            for e in enemies[:]:
+                e.move(dt, game_speed)
+                if e.hp <= 0: 
+                    gold += round_gold_value * (5 if e.is_boss else 1) # [복리] 적용된 골드 지급
+                    if e.is_boss:
+                        if aigonan_sound: aigonan_sound.play()
+                    elif bbolong_sound: bbolong_sound.play()
+                    enemies.remove(e)
+                elif e.target_idx >= len(enemy_path): 
+                    nexus.hp -= 2000 if e.is_boss else 1000; enemies.remove(e)
+                    if nexus.hp <= 0: pygame.mixer.music.stop(); game_state_mode = STATE_AIGONAN; (aigonan_sound.play() if aigonan_sound else None)
 
-    if sell_confirm_open:
-        sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (sx, sy, 500, 250), border_radius=20)
-        display_surface.blit(get_text_surface(f"이 타워를 {int(tower_to_sell.cost*0.7)}G에 파냐맨이야?", Fonts.UI, BLACK), (sx+80, sy+60))
-        Button(sx+60, sy+140, 160, 60, "조이기", RED).draw(display_surface); Button(sx+280, sy+140, 160, 60, "안조이기", GRAY).draw(display_surface)
-    if jukku_confirm_open:
-        px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (px, py, 500, 250), border_radius=20); display_surface.blit(get_text_surface("정말 자폭하시겠습니까?", Fonts.UI, BLACK), (px+120, py+50))
-        Button(px+60, py+140, 160, 60, "조이기", RED).draw(display_surface); Button(px+280, py+140, 160, 60, "안조이기", GRAY).draw(display_surface)
-    if quit_confirm_open:
-        qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (qx, qy, 500, 250), border_radius=20)
-        display_surface.blit(get_text_surface("정말 종료하시겠습니까?", Fonts.POPUP_TITLE, BLACK), (qx+100, qy+60))
-        Button(qx+60, qy+140, 160, 60, "조이기", RED).draw(display_surface); Button(qx+280, qy+140, 160, 60, "안조이기", GRAY).draw(display_surface)
-    pygame.display.update()
-pygame.quit(); sys.exit()
+        # --- 그리기 ---
+        display_surface.blit(background_image, (0, 0)) if background_image else display_surface.fill(BLACK)
+        if game_state_mode == STATE_START_SCREEN:
+            overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
+            panel_w, panel_h = int(RESOLUTION[0] * 0.8), int(RESOLUTION[1] * 0.8)
+            h_rect = pygame.Rect((RESOLUTION[0] - panel_w)//2, (RESOLUTION[1] - panel_h)//2, panel_w, panel_h)
+            pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
+            title_surf = get_text_surface("케인 디펜스 - GayDefense", Fonts.TITLE, BLACK)
+            display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, h_rect.y + int(panel_h * 0.1)))
+            helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매"]
+            for i, txt in enumerate(helps):
+                display_surface.blit(get_text_surface(txt, Fonts.HELP, BLACK), (h_rect.x + int(panel_w * 0.1), h_rect.y + int(panel_h * 0.25) + i * int(panel_h * 0.08)))
+            start_btn.draw(display_surface)
+            
+        elif game_state_mode == STATE_MAP_SELECT:
+            overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
+            
+            # 맵 선택 UI
+            map_name = available_maps[current_map_index]["name"]
+            map_surf = get_text_surface(f"MAP: {map_name}", Fonts.UI, WHITE)
+            display_surface.blit(map_surf, (RESOLUTION[0]//2 - map_surf.get_width()//2, int(RESOLUTION[1] * 0.2)))
+            
+            # 미리보기
+            preview_rect = pygame.Rect(0, 0, 600, 350)
+            preview_rect.center = (RESOLUTION[0]//2, RESOLUTION[1]//2)
+            pygame.draw.rect(display_surface, WHITE, preview_rect)
+            pygame.draw.rect(display_surface, BLACK, preview_rect, 3)
+            
+            p_path = available_maps[current_map_index]["path"]
+            if p_path:
+                scaled_path = [(preview_rect.x + p[0]*(preview_rect.width/24) + (preview_rect.width/48), preview_rect.y + p[1]*(preview_rect.height/14) + (preview_rect.height/28)) for p in p_path]
+                if len(scaled_path) > 1: pygame.draw.lines(display_surface, BLUE, False, scaled_path, 5)
+                pygame.draw.circle(display_surface, GREEN, (int(scaled_path[0][0]), int(scaled_path[0][1])), 8)
+                pygame.draw.circle(display_surface, RED, (int(scaled_path[-1][0]), int(scaled_path[-1][1])), 8)
+                
+            map_prev_btn.draw(display_surface)
+            map_next_btn.draw(display_surface)
+            map_select_confirm_btn.draw(display_surface)
+            map_select_back_btn.draw(display_surface)
+            
+        elif game_state_mode == STATE_PLAYING:
+            pygame.draw.lines(display_surface, PATH_COLOR, False, enemy_path, 50)
+            if shop_open and not (shop_rect.collidepoint(mx, my)) and current_round <= 40:
+                ps = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA); pygame.draw.rect(ps, (0,255,0,100) if can_place else (255,0,0,100), (0,0,GRID_SIZE,GRID_SIZE)); display_surface.blit(ps, (gmx, gmy))
+                rv = TOWER_DATA[selected_tower_type]["range"] + (range_level - 1) * 20; rs = pygame.Surface((rv*2, rv*2), pygame.SRCALPHA); pygame.draw.circle(rs, (255,255,255,60), (rv,rv), rv); display_surface.blit(rs, (gmx+GRID_SIZE//2-rv, gmy+GRID_SIZE//2-rv))
+            for t in towers: t.draw(display_surface, range_level)
+            for e in enemies: e.draw(display_surface)
+            for p in projectiles: p.draw(display_surface)
+            nexus.draw(display_surface); open_shop_btn.draw(display_surface); speed_btn.draw(display_surface)
+            display_surface.blit(get_text_surface(f"GOLD: {gold} (마리당: {round_gold_value}G) | 공격 Lv: {damage_level} | HP Lv: {hp_level} | 사거리 Lv: {range_level}", Fonts.UI, BLACK), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.03)))
+            display_surface.blit(get_text_surface(f"{f'라운드 {current_round} 조이고 ' if not is_break_time else '정리좀하고(%s초쯤)' % int(time_left)}| 남은 시간: {int(time_left)}초", Fonts.UI, DARK_RED), (int(RESOLUTION[0]*0.02), int(RESOLUTION[1]*0.08)))
+            if shop_open:
+                pygame.draw.rect(display_surface, (230,230,230), shop_rect, border_radius=20); pygame.draw.rect(display_surface, (150,150,150), sdb, border_radius=20); close_shop_btn.draw(display_surface)
+                draw_text_with_outline(display_surface, "★ 타워조이고 ★", Fonts.SHOP_TITLE, (shop_pos[0]+20, shop_pos[1]+15), WHITE, BLACK)
+                for b in tower_btns:
+                    b.draw(display_surface, selected_tower_type == b.val)
+                    dmg_txt = get_text_surface(f"공격력: {get_current_damage(b.val)}", Fonts.DMG_TEXT, BLACK)
+                    display_surface.blit(dmg_txt, (b.rect.centerx - dmg_txt.get_width()//2, b.rect.bottom + 5))
+                up_dmg_btn.draw(display_surface); up_hp_btn.draw(display_surface); up_range_btn.draw(display_surface)
+            if current_round > 40:
+                if not ending_sound_played: pygame.mixer.music.stop(); pygame.mixer.stop(); (oh_sound.play() if oh_sound else None); ending_sound_played = True
+                if mte22_image:
+                    m_rect = mte22_image.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2)); display_surface.blit(mte22_image, m_rect)
+                    txt = get_text_surface("클(로버핏)리어!", Fonts.CLEAR, YELLOW); display_surface.blit(txt, txt.get_rect(center=m_rect.center))
+                    quit_btn.rect.midtop = (m_rect.centerx, m_rect.bottom + 50); quit_btn.draw(display_surface)
+            if show_skip_button:
+                overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,150)); display_surface.blit(overlay, (0,0))
+                reward_txt = get_text_surface(f"라운드 클리어 보상: {100 * (current_round + 1)}G", Fonts.TITLE, YELLOW)
+                display_surface.blit(reward_txt, (RESOLUTION[0]//2 - reward_txt.get_width()//2, RESOLUTION[1]//2 - int(50 * (RESOLUTION[1]/1080.0))))
+                next_round_btn.draw(display_surface)
+        elif game_state_mode == STATE_AIGONAN:
+            display_surface.fill((20, 0, 0))
+            if aigonan_gif_frames:
+                gif_frame_idx = (gif_frame_idx + 1) % len(aigonan_gif_frames)
+                img = aigonan_gif_frames[gif_frame_idx]; display_surface.blit(img, img.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2)))
+            elif mte21_image: display_surface.blit(mte21_image, mte21_image.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2 - 50)))
+            display_surface.blit(get_text_surface("아이고난!", Fonts.GAMEOVER, RED), (RESOLUTION[0]//2-200, int(RESOLUTION[1]*0.15))); retry_btn.draw(display_surface)
+        elif game_state_mode == STATE_SETTINGS:
+            overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
+            s_w, s_h = RESOLUTION[0], RESOLUTION[1]
+            s = s_h / 1080.0 # UI 크기 비율
+            
+            title_surf = get_text_surface("설정 조이기", Fonts.TITLE, WHITE)
+            display_surface.blit(title_surf, (s_w//2 - title_surf.get_width()//2, s_h * 0.1))
+
+            def draw_setting_item(y, label, value_text, btn1, btn2):
+                label_surf = get_text_surface(label, Fonts.UI, WHITE)
+                # 스케일링 팩터 's'를 사용하여 위치를 동적으로 계산
+                label_x = s_w//2 - int(220 * s) - label_surf.get_width()
+                display_surface.blit(label_surf, (label_x, y + int(10 * s)))
+
+                value_surf = get_text_surface(value_text, Fonts.UI, WHITE)
+                # 볼륨 숫자와 버튼이 겹치지 않도록 왼쪽으로 이동
+                display_surface.blit(value_surf, (s_w//2 - value_surf.get_width()//2 - int(60*s), y + int(10 * s)))
+                btn1.draw(display_surface); btn2.draw(display_surface)
+
+            draw_setting_item(s_h * 0.25, "BGM 볼륨", f"{int(BGM_VOL*100)}%", bgm_vol_down_btn, bgm_vol_up_btn)
+            draw_setting_item(s_h * 0.35, "효과음 볼륨", f"{int(SFX_VOL*100)}%", sfx_vol_down_btn, sfx_vol_up_btn)
+
+            label_surf = get_text_surface("화면 설정", Fonts.UI, WHITE)
+            label_x = s_w//2 - int(220 * s) - label_surf.get_width()
+            display_surface.blit(label_surf, (label_x, s_h * 0.48 + int(10 * s)))
+            display_mode_window_btn.draw(display_surface, display_mode_setting == 0)
+            display_mode_fullscreen_btn.draw(display_surface, display_mode_setting == 1)
+
+            settings_jukku_btn.draw(display_surface); settings_quit_btn.draw(display_surface)
+            settings_back_btn.draw(display_surface)
+            settings_save_btn.draw(display_surface)
+
+            if show_save_feedback_timer > 0:
+                save_surf = get_text_surface("저장 완료!", Fonts.UI, GREEN)
+                pos = (settings_save_btn.rect.centerx - save_surf.get_width() // 2, settings_save_btn.rect.y - save_surf.get_height() - 10)
+                display_surface.blit(save_surf, pos)
+        
+        # --- 전역 UI 및 팝업 그리기 (항상 위에 표시) ---
+        open_settings_btn.draw(display_surface)
+        if save_confirm_open:
+            sc_w, sc_h = 600, 250
+            sc_x, sc_y = (RESOLUTION[0]-sc_w)//2, (RESOLUTION[1]-sc_h)//2
+            pygame.draw.rect(display_surface, WHITE, (sc_x, sc_y, sc_w, sc_h), border_radius=20)
+            
+            prompt_surf = get_text_surface("저장하지 않은 변경사항이 있습니다.", Fonts.UI, BLACK)
+            display_surface.blit(prompt_surf, (sc_x + (sc_w - prompt_surf.get_width())//2, sc_y + 40))
+            prompt_surf2 = get_text_surface("저장하시겠습니까?", Fonts.UI, BLACK)
+            display_surface.blit(prompt_surf2, (sc_x + (sc_w - prompt_surf2.get_width())//2, sc_y + 80))
+
+            save_btn = Button(sc_x + 30, sc_y + 150, 160, 60, "저장", BLUE)
+            dont_save_btn = Button(sc_x + 220, sc_y + 150, 160, 60, "저장 안함", RED)
+            cancel_btn = Button(sc_x + 410, sc_y + 150, 160, 60, "취소", GRAY)
+            
+            save_btn.draw(display_surface); dont_save_btn.draw(display_surface); cancel_btn.draw(display_surface)
+
+        if sell_confirm_open:
+            sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (sx, sy, 500, 250), border_radius=20)
+            display_surface.blit(get_text_surface(f"이 타워를 {int(tower_to_sell.cost*0.7)}G에 파냐맨이야?", Fonts.UI, BLACK), (sx+80, sy+60))
+            Button(sx+60, sy+140, 160, 60, "조이기", RED).draw(display_surface); Button(sx+280, sy+140, 160, 60, "안조이기", GRAY).draw(display_surface)
+        if jukku_confirm_open:
+            px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (px, py, 500, 250), border_radius=20); display_surface.blit(get_text_surface("정말 자폭하시겠습니까?", Fonts.UI, BLACK), (px+120, py+50))
+            Button(px+60, py+140, 160, 60, "조이기", RED).draw(display_surface); Button(px+280, py+140, 160, 60, "안조이기", GRAY).draw(display_surface)
+        if quit_confirm_open:
+            qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (qx, qy, 500, 250), border_radius=20)
+            display_surface.blit(get_text_surface("정말 종료하시겠습니까?", Fonts.POPUP_TITLE, BLACK), (qx+100, qy+60))
+            Button(qx+60, qy+140, 160, 60, "조이기", RED).draw(display_surface); Button(qx+280, qy+140, 160, 60, "안조이기", GRAY).draw(display_surface)
+        pygame.display.update()
+    pygame.quit(); sys.exit()
+
+if __name__ == "__main__":
+    main()

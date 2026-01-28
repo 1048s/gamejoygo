@@ -25,7 +25,7 @@ jobs:
           - os: macos-latest
             artifact_name: KaneDefense-Mac
             sep: ":"
-            ext: ".zip"
+            ext: ".dmg"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -43,8 +43,6 @@ jobs:
       - name: Build Executable
         shell: bash
         run: |
-          TARGET_FILE=$(find . -maxdepth 2 -name "main.py" | head -n 1)
-
           # Dynamically build --add-data arguments based on existing directories
           ADD_DATA_ARGS=""
           for folder in image sound font; do
@@ -56,11 +54,14 @@ jobs:
           python -m PyInstaller --onefile --noconsole \
             --name "${{ matrix.artifact_name }}" \
             $ADD_DATA_ARGS \
-            --clean "$TARGET_FILE"
+            --clean "start.py"
 
           if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             cd dist
-            zip -r "${{ matrix.artifact_name }}.zip" "${{ matrix.artifact_name }}.app"
+            mkdir dmg_source
+            mv "${{ matrix.artifact_name }}.app" dmg_source/
+            ln -s /Applications dmg_source/Applications
+            hdiutil create -volname "${{ matrix.artifact_name }}" -srcfolder dmg_source -ov -format UDZO "${{ matrix.artifact_name }}.dmg"
           fi
 
       - name: Upload Artifact
@@ -96,6 +97,6 @@ jobs:
           files: |
             ./release_files/**/*.exe
             ./release_files/**/KaneDefense-Linux
-            ./release_files/**/*.zip
+            ./release_files/**/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -160,7 +160,7 @@ class MapEditor:
             except Exception as e:
                 messagebox.showerror("오류", f"불러오기 중 오류 발생: {e}")
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
     # 윈도우 크기 및 위치 설정
     root.geometry(f"{GAME_GRID_COLS * VISUAL_GRID_SIZE + 40}x{GAME_GRID_ROWS * VISUAL_GRID_SIZE + 100}")
@@ -169,3 +169,6 @@ if __name__ == "__main__":
         root.mainloop()
     except KeyboardInterrupt:
         root.destroy()
+
+if __name__ == "__main__":
+    main()

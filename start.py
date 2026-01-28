@@ -7,12 +7,21 @@ import urllib.request
 import json
 import threading
 import os
+import main
+import map_editor
 
 class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.config_file = "launcher_config.json"
         self.load_config()
+
+        # Initialize tk variables from loaded config
+        self.display_var = tk.IntVar(value=self.config.get("display_mode", 0))
+        self.sfx_var = tk.DoubleVar(value=self.config.get("sfx_volume", 0.5))
+        self.bgm_var = tk.DoubleVar(value=self.config.get("bgm_volume", 0.3))
+        self.cheat_var = tk.BooleanVar(value=self.config.get("cheat_mode", False))
+        self.skip_var = tk.BooleanVar(value=self.config.get("skip_intro_screen", False))
 
         self.root.title("Kane Defense Launcher")
         self.root.geometry("800x500")
@@ -68,14 +77,7 @@ class LauncherApp:
             return btn
 
         self.btn_start = create_btn("게임 시작", self.start_game, color="#cc0000")
-        
-        self.skip_var = tk.BooleanVar()
-        self.chk_skip = tk.Checkbutton(right_frame, text="시작 화면 보지 않기", variable=self.skip_var,
-                                       bg="#1e1e1e", fg="#aaaaaa",
-                                       activebackground="#1e1e1e", activeforeground="#aaaaaa",
-                                       font=self.text_font)
-        self.chk_skip.pack(pady=(0, 10))
-
+        self.btn_settings = create_btn("설정", self.open_settings_window)
         self.btn_editor = create_btn("맵 에디터", self.open_editor)
         self.btn_update = create_btn("업데이트 확인", self.check_update)
         self.btn_exit = create_btn("종료", root.quit)
@@ -113,19 +115,91 @@ class LauncherApp:
                     self.config = json.load(f)
             except: pass
 
-    def start_game(self, save=True):
-        if save and hasattr(self, 'skip_var') and self.skip_var.get():
-            self.config["skip_launcher"] = True
-            try:
-                with open(self.config_file, "w") as f:
-                    json.dump(self.config, f)
-            except: pass
-            
+    def save_config(self):
+        """tk.Var 변수들의 현재 값을 self.config에 반영하고 파일에 저장합니다."""
+        self.config["skip_intro_screen"] = self.skip_var.get()
+        self.config["cheat_mode"] = self.cheat_var.get()
+        self.config["bgm_volume"] = self.bgm_var.get()
+        self.config["sfx_volume"] = self.sfx_var.get()
+        self.config["display_mode"] = self.display_var.get()
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(self.config, f, indent=4)
+        except Exception as e:
+            messagebox.showerror("오류", f"설정 저장에 실패했습니다: {e}", parent=self.root)
+
+    def open_settings_window(self):
+        """설정 팝업창을 엽니다."""
+        settings_win = tk.Toplevel(self.root)
+        settings_win.title("설정")
+        settings_win.geometry("350x320")
+        settings_win.configure(bg="#1e1e1e")
+        settings_win.resizable(False, False)
+        settings_win.transient(self.root)
+        settings_win.grab_set()
+
+        frame = tk.Frame(settings_win, bg="#1e1e1e", padx=20, pady=20)
+        frame.pack(fill="both", expand=True)
+
+        # 화면 설정
+        display_frame = tk.Frame(frame, bg="#1e1e1e")
+        display_frame.pack(fill='x', pady=5)
+        tk.Label(display_frame, text="화면", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
+        tk.Radiobutton(display_frame, text="창", variable=self.display_var, value=0, bg="#1e1e1e", fg="#aaaaaa", selectcolor="#1e1e1e", activebackground="#1e1e1e", activeforeground="white").pack(side="left")
+        tk.Radiobutton(display_frame, text="전체", variable=self.display_var, value=1, bg="#1e1e1e", fg="#aaaaaa", selectcolor="#1e1e1e", activebackground="#1e1e1e", activeforeground="white").pack(side="left")
+
+        # SFX 볼륨
+        sfx_frame = tk.Frame(frame, bg="#1e1e1e")
+        sfx_frame.pack(fill='x', pady=5)
+        tk.Label(sfx_frame, text="효과음", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
+
+        sfx_percent_label = tk.Label(sfx_frame, text=f"{int(self.sfx_var.get()*100)}%", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=4)
+        sfx_percent_label.pack(side="right", padx=(5,0))
+
+        def update_sfx_label(val):
+            sfx_percent_label.config(text=f"{int(float(val)*100)}%")
+
+        tk.Scale(sfx_frame, from_=0, to=1, resolution=0.1, orient='horizontal', variable=self.sfx_var, bg="#1e1e1e", fg="#aaaaaa", troughcolor="#333333", activebackground="#555555", highlightthickness=0, showvalue=0, command=update_sfx_label).pack(fill='x', expand=True)
+
+        # BGM 볼륨
+        bgm_frame = tk.Frame(frame, bg="#1e1e1e")
+        bgm_frame.pack(fill='x', pady=5)
+        tk.Label(bgm_frame, text="배경음", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
+
+        bgm_percent_label = tk.Label(bgm_frame, text=f"{int(self.bgm_var.get()*100)}%", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=4)
+        bgm_percent_label.pack(side="right", padx=(5,0))
+
+        def update_bgm_label(val):
+            bgm_percent_label.config(text=f"{int(float(val)*100)}%")
+
+        tk.Scale(bgm_frame, from_=0, to=1, resolution=0.1, orient='horizontal', variable=self.bgm_var, bg="#1e1e1e", fg="#aaaaaa", troughcolor="#333333", activebackground="#555555", highlightthickness=0, showvalue=0, command=update_bgm_label).pack(fill='x', expand=True)
+
+        # 치트 모드
+        tk.Checkbutton(frame, text="치트 모드 활성화", variable=self.cheat_var, bg="#1e1e1e", fg="#aaaaaa", activebackground="#1e1e1e", activeforeground="#aaaaaa", font=self.text_font, selectcolor="#1e1e1e").pack(pady=5, anchor="w")
+
+        # 시작 화면 건너뛰기
+        tk.Checkbutton(frame, text="시작 화면 건너뛰기", variable=self.skip_var, bg="#1e1e1e", fg="#aaaaaa", activebackground="#1e1e1e", activeforeground="#aaaaaa", font=self.text_font, selectcolor="#1e1e1e").pack(pady=5, anchor="w")
+
+        def save_and_close():
+            self.save_config()
+            messagebox.showinfo("저장 완료", "설정이 저장되었습니다.", parent=settings_win)
+            settings_win.destroy()
+
+        tk.Button(frame, text="저장하고 닫기", font=self.btn_font, bg="#333333", fg="white", 
+                  activebackground="#555555", activeforeground="white", 
+                  relief="flat", command=save_and_close, cursor="hand2").pack(side="bottom", fill="x", pady=(15, 0))
+
+    def start_game(self):
         self.root.destroy()
-        subprocess.Popen([sys.executable, "main.py"])
+        # main.py가 시작 시 launcher_config.json을 읽어 설정을 적용합니다.
+        # skip_intro 플래그는 main.py의 시작 상태를 결정하기 위해 전달합니다.
+        main.main(skip_intro=self.config.get("skip_intro_screen", False))
 
     def open_editor(self):
-        subprocess.Popen([sys.executable, "map_editor.py"])
+        if getattr(sys, 'frozen', False):
+            subprocess.Popen([sys.executable, "map_editor"])
+        else:
+            subprocess.Popen([sys.executable, "map_editor.py"])
 
     def check_update(self):
         def check():
@@ -148,6 +222,12 @@ class LauncherApp:
         threading.Thread(target=check, daemon=True).start()
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "map_editor":
+        map_editor.main()
+        sys.exit()
+
+    # 런처는 항상 실행합니다.
+    # '건너뛰기' 옵션은 런처 내부의 게임 시작 로직에 영향을 줍니다.
     root = tk.Tk()
     app = LauncherApp(root)
     root.mainloop()
