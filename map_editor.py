@@ -114,7 +114,7 @@ class MapEditor:
             messagebox.showwarning("경고", "경로가 비어있습니다.")
             return
             
-        initial_dir = os.path.join(os.getcwd(), "maps")
+        initial_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maps")
         if not os.path.exists(initial_dir):
             os.makedirs(initial_dir)
             
@@ -138,7 +138,10 @@ class MapEditor:
                 messagebox.showerror("오류", f"저장 중 오류 발생: {e}")
 
     def load_map(self):
-        initial_dir = os.path.join(os.getcwd(), "maps")
+        initial_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maps")
+        if not os.path.exists(initial_dir):
+            os.makedirs(initial_dir)
+            
         file_path = filedialog.askopenfilename(
             initialdir=initial_dir,
             title="맵 불러오기",

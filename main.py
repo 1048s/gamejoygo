@@ -211,7 +211,8 @@ def get_current_damage(tower_type):
 
 # --- 유틸리티 및 경로 ---
 def get_c(gx, gy): return (gx * GRID_SIZE + GRID_SIZE // 2, gy * GRID_SIZE + GRID_SIZE // 2)
-def is_on_path(pos, path, threshold=45):
+def is_on_path(pos, path, threshold=None):
+    if threshold is None: threshold = GRID_SIZE * 0.6 # 그리드 크기에 비례하여 판정
     for i in range(len(path)-1):
         p1, p2, p3 = pygame.Vector2(path[i]), pygame.Vector2(path[i+1]), pygame.Vector2(pos); lp = p2-p1
         if lp.length() == 0: continue
@@ -418,11 +419,9 @@ def main(skip_intro=False):
                 if save_confirm_open:
                     sc_w, sc_h = 600, 250
                     sc_x, sc_y = (RESOLUTION[0]-sc_w)//2, (RESOLUTION[1]-sc_h)//2
-                    
-                    save_btn_rect = pygame.Rect(sc_x + 30, sc_y + 150, 160, 60)
-                    dont_save_btn_rect = pygame.Rect(sc_x + 220, sc_y + 150, 160, 60)
-                    cancel_btn_rect = pygame.Rect(sc_x + 410, sc_y + 150, 160, 60)
 
+                    save_btn_rect = pygame.Rect(sc_x + 100, sc_y + 150, 180, 60)
+                    dont_save_btn_rect = pygame.Rect(sc_x + 320, sc_y + 150, 180, 60)
                     if event.button == 1:
                         if save_btn_rect.collidepoint(mx, my):
                             save_game_config()
@@ -435,11 +434,10 @@ def main(skip_intro=False):
                             pygame.mixer.music.set_volume(BGM_VOL)
                             if display_mode_setting != initial_settings.get("display_mode", 0):
                                 display_mode_setting = initial_settings.get("display_mode", 0)
-                                update_display_mode()
+                                update_display_mode() # 화면 모드 변경 적용
                             game_state_mode = state_before_settings
                             save_confirm_open = False
-                        elif cancel_btn_rect.collidepoint(mx, my):
-                            save_confirm_open = False
+                            continue # 상태 변경 후 즉시 루프 재시작하여 오류 방지
                     continue
                 if quit_confirm_open:
                     qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
@@ -526,6 +524,12 @@ def main(skip_intro=False):
                             game_state_mode = state_before_settings
                     elif settings_save_btn.rect.collidepoint(mx, my):
                         save_game_config()
+                        # 저장 후, 현재 설정을 "초기 설정"으로 업데이트하여 불필요한 팝업 방지
+                        initial_settings = {
+                            "bgm_volume": BGM_VOL,
+                            "sfx_volume": SFX_VOL,
+                            "display_mode": display_mode_setting
+                        }
                         show_save_feedback_timer = 2 # 2초 동안 피드백 표시
                     elif bgm_vol_down_btn.rect.collidepoint(mx, my): BGM_VOL = max(0.0, round(BGM_VOL - 0.1, 1)); pygame.mixer.music.set_volume(BGM_VOL)
                     elif bgm_vol_up_btn.rect.collidepoint(mx, my): BGM_VOL = min(1.0, round(BGM_VOL + 0.1, 1)); pygame.mixer.music.set_volume(BGM_VOL)
@@ -749,11 +753,9 @@ def main(skip_intro=False):
             prompt_surf2 = get_text_surface("저장하시겠습니까?", Fonts.UI, BLACK)
             display_surface.blit(prompt_surf2, (sc_x + (sc_w - prompt_surf2.get_width())//2, sc_y + 80))
 
-            save_btn = Button(sc_x + 30, sc_y + 150, 160, 60, "저장", BLUE)
-            dont_save_btn = Button(sc_x + 220, sc_y + 150, 160, 60, "저장 안함", RED)
-            cancel_btn = Button(sc_x + 410, sc_y + 150, 160, 60, "취소", GRAY)
-            
-            save_btn.draw(display_surface); dont_save_btn.draw(display_surface); cancel_btn.draw(display_surface)
+            save_btn = Button(sc_x + 100, sc_y + 150, 180, 60, "저장하고 닫기", BLUE)
+            dont_save_btn = Button(sc_x + 320, sc_y + 150, 180, 60, "저장 안하고 닫기", RED)
+            save_btn.draw(display_surface); dont_save_btn.draw(display_surface)
 
         if sell_confirm_open:
             sx, sy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (sx, sy, 500, 250), border_radius=20)

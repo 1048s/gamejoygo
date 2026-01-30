@@ -2,7 +2,7 @@
     "skip_launcher": true,
     "skip_map_select": true,
     "skip_intro_screen": false,
-    "cheat_mode": false,
+    "cheat_mode": true,
     "bgm_volume": 0.3,
     "sfx_volume": 0.5,
     "display_mode": 0

@@ -212,14 +212,17 @@ class LauncherApp:
                     # 현재 버전 하드코딩 (실제로는 변수로 관리 권장)
                     current_version = "v1.0.0" 
                     if latest_tag != current_version:
-                        if messagebox.askyesno("업데이트", f"새로운 버전 {latest_tag}이 있습니다.\n다운로드 페이지로 이동하시겠습니까?"):
-                            webbrowser.open(data['html_url'])
+                        self.root.after(0, lambda: self.show_update_dialog(latest_tag, data['html_url']))
                     else:
-                        messagebox.showinfo("업데이트", "현재 최신 버전을 사용 중입니다.")
+                        self.root.after(0, lambda: messagebox.showinfo("업데이트", "현재 최신 버전을 사용 중입니다."))
             except Exception as e:
-                messagebox.showerror("오류", f"업데이트 정보를 가져올 수 없습니다.\n{e}")
+                self.root.after(0, lambda: messagebox.showerror("오류", f"업데이트 정보를 가져올 수 없습니다.\n{e}"))
         
         threading.Thread(target=check, daemon=True).start()
+
+    def show_update_dialog(self, tag, url):
+        if messagebox.askyesno("업데이트", f"새로운 버전 {tag}이 있습니다.\n다운로드 페이지로 이동하시겠습니까?"):
+            webbrowser.open(url)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "map_editor":
