@@ -7,7 +7,6 @@ import urllib.request
 import json
 import threading
 import os
-import main
 import map_editor
 
 class LauncherApp:
@@ -15,6 +14,7 @@ class LauncherApp:
         self.root = root
         self.config_file = "launcher_config.json"
         self.load_config()
+        self.should_launch_game = False
 
         # Initialize tk variables from loaded config
         self.display_var = tk.IntVar(value=self.config.get("display_mode", 0))
@@ -190,10 +190,8 @@ class LauncherApp:
                   relief="flat", command=save_and_close, cursor="hand2").pack(side="bottom", fill="x", pady=(15, 0))
 
     def start_game(self):
+        self.should_launch_game = True
         self.root.destroy()
-        # main.py가 시작 시 launcher_config.json을 읽어 설정을 적용합니다.
-        # skip_intro 플래그는 main.py의 시작 상태를 결정하기 위해 전달합니다.
-        main.main(skip_intro=self.config.get("skip_intro_screen", False))
 
     def open_editor(self):
         if getattr(sys, 'frozen', False):
@@ -234,3 +232,12 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = LauncherApp(root)
     root.mainloop()
+    
+    if app.should_launch_game:
+        try:
+            # 게임 시작 직전에 모듈을 임포트하여 충돌 방지
+            import main
+            main.main(skip_intro=app.config.get("skip_intro_screen", False))
+        except Exception as e:
+            # 실행 실패 시 오류 메시지 표시
+            messagebox.showerror("실행 오류", f"게임을 시작하는 중 오류가 발생했습니다:\n{e}")
