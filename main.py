@@ -77,6 +77,7 @@ class GameManager:
         
         # 현재 선택된 맵 경로 로드
         if available_maps:
+            self.current_map_index = self.current_map_index % len(available_maps) # 인덱스 안전장치 추가
             raw_path = available_maps[self.current_map_index]["path"]
             self.enemy_path = [get_c(p[0], p[1]) for p in raw_path]
         else:
@@ -297,25 +298,37 @@ available_maps = []
 
 def load_maps():
     global available_maps
-    maps_path = resource_path(MAPS_DIR)
-    # 맵 폴더가 없으면 생성하고 기본 맵 파일 생성
-    if not os.path.exists(maps_path):
+    available_maps = [] # 중복 방지를 위해 초기화
+    
+    search_paths = []
+    
+    # 1. 번들된 맵 경로 (PyInstaller _MEIPASS 대응)
+    if hasattr(sys, '_MEIPASS'):
+        search_paths.append(os.path.join(sys._MEIPASS, MAPS_DIR))
+    else:
+        search_paths.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), MAPS_DIR))
+        
+    # 2. 로컬 맵 경로 (사용자 추가 맵)
+    local_path = os.path.join(os.getcwd(), MAPS_DIR)
+    if os.path.abspath(local_path) not in [os.path.abspath(p) for p in search_paths]:
+        search_paths.append(local_path)
+
+    # 로컬 맵 폴더가 없으면 생성 (기본 맵 파일 생성은 아래 fallback에서 처리됨)
+    if not os.path.exists(local_path):
         try:
-            os.makedirs(maps_path)
-            default_map = {
-                "name": "기본 맵",
-                "path": [[1,13], [1,1], [3,1], [3,12], [5,12], [5,1], [22,1], [22,12], [7,12], [7,3], [20,3], [20,10], [9,10], [9,5], [18,5], [18,8], [11,8]]
-            }
-            with open(os.path.join(maps_path, "default.json"), "w", encoding="utf-8") as f:
-                json.dump(default_map, f, ensure_ascii=False, indent=4)
+            os.makedirs(local_path)
         except: pass
     
-    for f in glob.glob(os.path.join(maps_path, "*.json")):
-        try:
-            with open(f, "r", encoding="utf-8") as file:
-                d = json.load(file)
-                if "name" in d and "path" in d: available_maps.append(d)
-        except: continue
+    for path in search_paths:
+        if not os.path.exists(path): continue
+        for f in glob.glob(os.path.join(path, "*.json")):
+            try:
+                with open(f, "r", encoding="utf-8") as file:
+                    d = json.load(file)
+                    # path가 비어있으면 Nexus 생성 시 크래시 발생하므로 체크
+                    if "name" in d and "path" in d and d["path"]: 
+                        available_maps.append(d)
+            except: continue
     
     if not available_maps:
         available_maps.append({"name": "기본 맵", "path": [[1,13], [1,1], [3,1], [3,12], [5,12], [5,1], [22,1], [22,12], [7,12], [7,3], [20,3], [20,10], [9,10], [9,5], [18,5], [18,8], [11,8]]})
@@ -509,7 +522,7 @@ def main(skip_intro=False):
                     elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): gm.jukku_confirm_open = False
                     continue
                 
-                if open_settings_btn.rect.collidepoint(mx, my):
+                if gm.mode != STATE_SETTINGS and open_settings_btn.rect.collidepoint(mx, my):
                     gm.state_before_settings = gm.mode
                     gm.mode = STATE_SETTINGS
                     # 설정 화면 진입 시 현재 설정값 저장
@@ -799,7 +812,8 @@ def main(skip_intro=False):
                 display_surface.blit(save_surf, pos)
         
         # --- 전역 UI 및 팝업 그리기 (항상 위에 표시) ---
-        open_settings_btn.draw(display_surface)
+        if gm.mode != STATE_SETTINGS:
+            open_settings_btn.draw(display_surface)
         if gm.save_confirm_open:
             sc_w, sc_h = 600, 250
             sc_x, sc_y = (RESOLUTION[0]-sc_w)//2, (RESOLUTION[1]-sc_h)//2

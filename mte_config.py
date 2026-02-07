@@ -16,6 +16,10 @@ pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
 
 # --- 리소스 경로 처리 ---
 def resource_path(relative_path):
+    # 1. 로컬 파일 우선 확인 (모딩 및 개발 편의성)
+    if os.path.exists(relative_path):
+        return os.path.abspath(relative_path)
+    # 2. PyInstaller 임시 폴더 확인
     try:
         base_path = sys._MEIPASS
     except Exception:

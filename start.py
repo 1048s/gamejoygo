@@ -9,6 +9,69 @@ import threading
 import os
 import map_editor
 
+class ModernButton(tk.Canvas):
+    def __init__(self, parent, text, command, width=200, height=50, 
+                 bg_color="#333333", hover_color="#444444", text_color="white", font=None):
+        parent_bg = parent.cget("bg")
+        super().__init__(parent, width=width, height=height, bg=parent_bg, highlightthickness=0)
+        self.command = command
+        self.bg_color = bg_color
+        self.hover_color = hover_color
+        
+        def draw_rounded_rect(x1, y1, x2, y2, radius, **kwargs):
+            points = [x1+radius, y1,
+                      x1+radius, y1,
+                      x2-radius, y1,
+                      x2-radius, y1,
+                      x2, y1,
+                      x2, y1+radius,
+                      x2, y1+radius,
+                      x2, y2-radius,
+                      x2, y2-radius,
+                      x2, y2,
+                      x2-radius, y2,
+                      x2-radius, y2,
+                      x1+radius, y2,
+                      x1+radius, y2,
+                      x1, y2,
+                      x1, y2-radius,
+                      x1, y2-radius,
+                      x1, y1+radius,
+                      x1, y1+radius,
+                      x1, y1]
+            return self.create_polygon(points, **kwargs, smooth=True)
+
+        # 2.5D 그림자 (Shadow)
+        draw_rounded_rect(4, 4, width, height, 15, fill="#000000", outline="")
+        
+        # 버튼 본체 (Main Body)
+        self.rect = draw_rounded_rect(0, 0, width-4, height-4, 15, fill=bg_color, outline="")
+        
+        # 텍스트 (Text)
+        self.text_id = self.create_text((width-4)/2, (height-4)/2, text=text, fill=text_color, font=font)
+        
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+        self.bind("<Button-1>", self.on_click)
+        self.bind("<ButtonRelease-1>", self.on_release)
+        self.config(cursor="hand2")
+
+    def on_enter(self, e):
+        self.itemconfig(self.rect, fill=self.hover_color)
+
+    def on_leave(self, e):
+        self.itemconfig(self.rect, fill=self.bg_color)
+
+    def on_click(self, e):
+        self.move(self.rect, 2, 2)
+        self.move(self.text_id, 2, 2)
+
+    def on_release(self, e):
+        self.move(self.rect, -2, -2)
+        self.move(self.text_id, -2, -2)
+        if self.command:
+            self.command()
+
 class LauncherApp:
     def __init__(self, root):
         self.root = root
@@ -24,72 +87,84 @@ class LauncherApp:
         self.skip_var = tk.BooleanVar(value=self.config.get("skip_intro_screen", False))
 
         self.root.title("Kane Defense Launcher")
-        self.root.geometry("800x500")
-        self.root.configure(bg="#1e1e1e")
+        self.root.geometry("900x600")
+        self.root.configure(bg="#121212")
         self.root.resizable(False, False)
 
         # 폰트 설정 (시스템에 맑은 고딕이 없으면 기본 폰트 사용)
         try:
-            self.title_font = font.Font(family="Malgun Gothic", size=30, weight="bold")
-            self.btn_font = font.Font(family="Malgun Gothic", size=12, weight="bold")
+            self.title_font = font.Font(family="Malgun Gothic", size=40, weight="bold")
+            self.subtitle_font = font.Font(family="Malgun Gothic", size=12)
+            self.menu_btn_font = font.Font(family="Malgun Gothic", size=14, weight="bold")
+            self.btn_font = font.Font(family="Malgun Gothic", size=11, weight="bold")
             self.text_font = font.Font(family="Malgun Gothic", size=10)
+            self.notice_title_font = font.Font(family="Malgun Gothic", size=11, weight="bold")
         except:
-            self.title_font = font.Font(family="Helvetica", size=30, weight="bold")
-            self.btn_font = font.Font(family="Helvetica", size=12, weight="bold")
+            self.title_font = font.Font(family="Helvetica", size=40, weight="bold")
+            self.subtitle_font = font.Font(family="Helvetica", size=12)
+            self.menu_btn_font = font.Font(family="Helvetica", size=14, weight="bold")
+            self.btn_font = font.Font(family="Helvetica", size=11, weight="bold")
             self.text_font = font.Font(family="Helvetica", size=10)
+            self.notice_title_font = font.Font(family="Helvetica", size=11, weight="bold")
 
-        # 메인 프레임
-        main_frame = tk.Frame(root, bg="#1e1e1e")
-        main_frame.pack(fill="both", expand=True, padx=40, pady=40)
+        # 메인 컨테이너
+        main_container = tk.Frame(root, bg="#121212")
+        main_container.pack(fill="both", expand=True, padx=50, pady=50)
 
         # 왼쪽: 타이틀 및 정보
-        left_frame = tk.Frame(main_frame, bg="#1e1e1e")
+        left_frame = tk.Frame(main_container, bg="#121212")
         left_frame.pack(side="left", fill="both", expand=True)
 
-        title_label = tk.Label(left_frame, text="케인 디펜스 실행기", font=self.title_font, bg="#1e1e1e", fg="#ff3333", anchor="w")
-        title_label.pack(fill="x", pady=(0, 10))
+        # 타이틀 영역 (2.5D 효과: 그림자 텍스트)
+        title_canvas = tk.Canvas(left_frame, bg="#121212", height=80, highlightthickness=0)
+        title_canvas.pack(fill="x")
+        title_canvas.create_text(3, 43, text="케인 디펜스", font=self.title_font, fill="#000000", anchor="w")
+        title_canvas.create_text(0, 40, text="케인 디펜스", font=self.title_font, fill="#FF3333", anchor="w")
+        
+        tk.Label(left_frame, text="게이조이고의 전설", font=self.subtitle_font, bg="#121212", fg="#666666", anchor="w").pack(fill="x", pady=(0, 30))
 
-        desc_label = tk.Label(left_frame, text="실행파일이란 맨이야 \n지금 바로 조이기->", font=self.text_font, bg="#1e1e1e", fg="#cccccc", justify="left", anchor="w")
-        desc_label.pack(fill="x", pady=(0, 30))
-
-        # 공지사항 박스 (더미 데이터)
-        notice_frame = tk.LabelFrame(left_frame, text="공지사항", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", bd=1, relief="solid")
+        # 공지사항 박스 (2.5D 스타일링: 테두리 추가)
+        notice_bg = "#1E1E1E"
+        notice_frame = tk.Frame(left_frame, bg=notice_bg, padx=20, pady=20, highlightbackground="black", highlightthickness=2)
         notice_frame.pack(fill="both", expand=True, pady=(0, 20))
 
+        tk.Label(notice_frame, text="공지사항", font=self.notice_title_font, bg=notice_bg, fg="#FF3333", anchor="w").pack(fill="x", pady=(0, 15))
+
         self.notice_labels = []
-        for _ in range(4):
-            lbl = tk.Label(notice_frame, text="로딩 중...", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", anchor="w", padx=10, pady=5)
-            lbl.pack(fill="x")
+        for _ in range(5):
+            lbl = tk.Label(notice_frame, text="Loading...", font=self.text_font, bg=notice_bg, fg="#CCCCCC", anchor="w", cursor="hand2")
+            lbl.pack(fill="x", pady=3)
             self.notice_labels.append(lbl)
         
         self.load_notices()
 
         # 오른쪽: 버튼 영역
-        right_frame = tk.Frame(main_frame, bg="#1e1e1e")
-        right_frame.pack(side="right", fill="y", padx=(40, 0))
+        right_frame = tk.Frame(main_container, bg="#121212")
+        right_frame.pack(side="right", fill="y", padx=(60, 0))
 
-        # 버튼 생성 헬퍼 함수
-        def create_btn(text, cmd, color="#333333", text_color="white"):
-            btn = tk.Button(right_frame, text=text, font=self.btn_font, bg=color, fg=text_color, 
-                            activebackground="#555555", activeforeground="white", 
-                            relief="flat", width=20, height=2, command=cmd, cursor="hand2")
-            btn.pack(pady=10)
+        # 버튼 생성 헬퍼 함수 (ModernButton 적용)
+        def create_btn(text, cmd, primary=False):
+            bg_color = "#FF3333" if primary else "#252525"
+            hover_color = "#FF5555" if primary else "#353535"
+            btn = ModernButton(right_frame, text=text, command=cmd, width=220, height=55, 
+                               bg_color=bg_color, hover_color=hover_color, font=self.menu_btn_font)
+            btn.pack(pady=8)
             return btn
 
-        self.btn_start = create_btn("게임 시작", self.start_game, color="#cc0000")
+        self.btn_start = create_btn("게임 시작", self.start_game, primary=True)
         self.btn_settings = create_btn("설정", self.open_settings_window)
         self.btn_editor = create_btn("맵 에디터", self.open_editor)
         self.btn_update = create_btn("업데이트 확인", self.check_update)
         self.btn_exit = create_btn("종료", root.quit)
 
         # 하단 버전 정보
-        version_label = tk.Label(root, text="Version 1.0.0 | GameJoyGo", bg="#1e1e1e", fg="#666666", font=("Arial", 8))
-        version_label.pack(side="bottom", pady=10)
+        version_label = tk.Label(root, text="v1.0.0 | GameJoyGo", bg="#121212", fg="#333333", font=("Arial", 9))
+        version_label.place(relx=0.98, rely=0.98, anchor="se")
 
     def load_notices(self):
         def fetch():
             try:
-                url = "https://api.github.com/repos/1048s/gamejoygo/issues?state=open&per_page=4"
+                url = "https://api.github.com/repos/1048s/gamejoygo/issues?state=open&per_page=5"
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req) as response:
                     data = json.loads(response.read().decode())
@@ -132,62 +207,64 @@ class LauncherApp:
         """설정 팝업창을 엽니다."""
         settings_win = tk.Toplevel(self.root)
         settings_win.title("설정")
-        settings_win.geometry("350x320")
-        settings_win.configure(bg="#1e1e1e")
+        settings_win.geometry("400x520")
+        settings_win.configure(bg="#121212")
         settings_win.resizable(False, False)
         settings_win.transient(self.root)
         settings_win.grab_set()
 
-        frame = tk.Frame(settings_win, bg="#1e1e1e", padx=20, pady=20)
+        # 타이틀
+        tk.Label(settings_win, text="설정", font=("Malgun Gothic", 20, "bold"), bg="#121212", fg="#FF3333").pack(pady=(25, 10))
+
+        frame = tk.Frame(settings_win, bg="#121212", padx=30, pady=10)
         frame.pack(fill="both", expand=True)
 
-        # 화면 설정
-        display_frame = tk.Frame(frame, bg="#1e1e1e")
-        display_frame.pack(fill='x', pady=5)
-        tk.Label(display_frame, text="화면", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
-        tk.Radiobutton(display_frame, text="창", variable=self.display_var, value=0, bg="#1e1e1e", fg="#aaaaaa", selectcolor="#1e1e1e", activebackground="#1e1e1e", activeforeground="white").pack(side="left")
-        tk.Radiobutton(display_frame, text="전체", variable=self.display_var, value=1, bg="#1e1e1e", fg="#aaaaaa", selectcolor="#1e1e1e", activebackground="#1e1e1e", activeforeground="white").pack(side="left")
+        # 스타일 상수
+        bg_color = "#121212"
+        text_color = "#CCCCCC"
+        accent_color = "#FF3333"
+        rb_style = {"bg": bg_color, "fg": text_color, "selectcolor": "#252525", "activebackground": bg_color, "activeforeground": "white", "font": self.text_font, "relief": "flat"}
 
-        # SFX 볼륨
-        sfx_frame = tk.Frame(frame, bg="#1e1e1e")
-        sfx_frame.pack(fill='x', pady=5)
-        tk.Label(sfx_frame, text="효과음", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
+        # 섹션 헬퍼
+        def add_section(text):
+            tk.Label(frame, text=text, font=self.notice_title_font, bg=bg_color, fg=accent_color, anchor="w").pack(fill="x", pady=(15, 5))
 
-        sfx_percent_label = tk.Label(sfx_frame, text=f"{int(self.sfx_var.get()*100)}%", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=4)
-        sfx_percent_label.pack(side="right", padx=(5,0))
+        # 1. DISPLAY
+        add_section("화면 설정")
+        display_frame = tk.Frame(frame, bg=bg_color)
+        display_frame.pack(fill='x')
+        tk.Radiobutton(display_frame, text="창 모드", variable=self.display_var, value=0, **rb_style).pack(side="left", padx=(0, 15))
+        tk.Radiobutton(display_frame, text="전체 화면", variable=self.display_var, value=1, **rb_style).pack(side="left")
 
-        def update_sfx_label(val):
-            sfx_percent_label.config(text=f"{int(float(val)*100)}%")
+        # 2. AUDIO
+        add_section("오디오 설정")
+        def create_slider(label_text, var):
+            f = tk.Frame(frame, bg=bg_color)
+            f.pack(fill='x', pady=2)
+            tk.Label(f, text=label_text, font=self.text_font, bg=bg_color, fg=text_color, width=8, anchor="w").pack(side="left")
+            val_lbl = tk.Label(f, text=f"{int(var.get()*100)}%", font=self.text_font, bg=bg_color, fg=accent_color, width=4)
+            val_lbl.pack(side="right")
+            def update_lbl(v): val_lbl.config(text=f"{int(float(v)*100)}%")
+            tk.Scale(f, from_=0, to=1, resolution=0.1, orient='horizontal', variable=var, 
+                     bg=bg_color, fg=text_color, troughcolor="#333333", activebackground=accent_color, 
+                     highlightthickness=0, showvalue=0, command=update_lbl, bd=0).pack(fill='x', expand=True, padx=5)
 
-        tk.Scale(sfx_frame, from_=0, to=1, resolution=0.1, orient='horizontal', variable=self.sfx_var, bg="#1e1e1e", fg="#aaaaaa", troughcolor="#333333", activebackground="#555555", highlightthickness=0, showvalue=0, command=update_sfx_label).pack(fill='x', expand=True)
+        create_slider("효과음", self.sfx_var)
+        create_slider("배경음", self.bgm_var)
 
-        # BGM 볼륨
-        bgm_frame = tk.Frame(frame, bg="#1e1e1e")
-        bgm_frame.pack(fill='x', pady=5)
-        tk.Label(bgm_frame, text="배경음", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=8, anchor="w").pack(side="left")
-
-        bgm_percent_label = tk.Label(bgm_frame, text=f"{int(self.bgm_var.get()*100)}%", font=self.text_font, bg="#1e1e1e", fg="#aaaaaa", width=4)
-        bgm_percent_label.pack(side="right", padx=(5,0))
-
-        def update_bgm_label(val):
-            bgm_percent_label.config(text=f"{int(float(val)*100)}%")
-
-        tk.Scale(bgm_frame, from_=0, to=1, resolution=0.1, orient='horizontal', variable=self.bgm_var, bg="#1e1e1e", fg="#aaaaaa", troughcolor="#333333", activebackground="#555555", highlightthickness=0, showvalue=0, command=update_bgm_label).pack(fill='x', expand=True)
-
-        # 치트 모드
-        tk.Checkbutton(frame, text="치트 모드 활성화", variable=self.cheat_var, bg="#1e1e1e", fg="#aaaaaa", activebackground="#1e1e1e", activeforeground="#aaaaaa", font=self.text_font, selectcolor="#1e1e1e").pack(pady=5, anchor="w")
-
-        # 시작 화면 건너뛰기
-        tk.Checkbutton(frame, text="시작 화면 건너뛰기", variable=self.skip_var, bg="#1e1e1e", fg="#aaaaaa", activebackground="#1e1e1e", activeforeground="#aaaaaa", font=self.text_font, selectcolor="#1e1e1e").pack(pady=5, anchor="w")
+        # 3. OPTIONS
+        add_section("기타 설정")
+        tk.Checkbutton(frame, text="치트 모드", variable=self.cheat_var, **rb_style).pack(anchor="w", pady=2)
+        tk.Checkbutton(frame, text="인트로 건너뛰기", variable=self.skip_var, **rb_style).pack(anchor="w", pady=2)
 
         def save_and_close():
             self.save_config()
-            messagebox.showinfo("저장 완료", "설정이 저장되었습니다.", parent=settings_win)
             settings_win.destroy()
 
-        tk.Button(frame, text="저장하고 닫기", font=self.btn_font, bg="#333333", fg="white", 
-                  activebackground="#555555", activeforeground="white", 
-                  relief="flat", command=save_and_close, cursor="hand2").pack(side="bottom", fill="x", pady=(15, 0))
+        # 저장 버튼
+        btn = ModernButton(settings_win, text="저장하고 닫기", command=save_and_close, width=340, height=50,
+                           bg_color=accent_color, hover_color="#FF5555", font=self.btn_font)
+        btn.pack(fill="x", padx=30, pady=30)
 
     def start_game(self):
         self.should_launch_game = True

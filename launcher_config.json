@@ -1,9 +1,9 @@
 {
     "skip_launcher": true,
     "skip_map_select": true,
-    "skip_intro_screen": false,
-    "cheat_mode": true,
-    "bgm_volume": 0.3,
+    "skip_intro_screen": true,
+    "cheat_mode": false,
+    "bgm_volume": 0.4,
     "sfx_volume": 0.4,
     "display_mode": 1
 }
