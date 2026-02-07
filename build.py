@@ -4,13 +4,15 @@ import os
 import subprocess
 import shutil
 import tempfile
+import version
 
 def build():
     # 운영체제 확인 (Windows는 ';', Mac/Linux는 ':')
     system_platform = platform.system()
     sep = ';' if system_platform == 'Windows' else ':'
+    project_root = os.path.dirname(os.path.abspath(__file__))
     
-    print(f"Building for {system_platform}...")
+    print(f"Building {version.VERSION} for {system_platform}...")
 
     # 임시 작업 디렉토리 생성 (캐시 파일 저장용)
     build_cache_dir = tempfile.mkdtemp(prefix="KaneDefense_Build_")
@@ -29,8 +31,9 @@ def build():
 
     # 리소스 데이터 포함 (소스경로:대상경로) - 폴더가 존재할 때만 추가
     for folder in ['image', 'sound', 'font']:
-        if os.path.exists(folder):
-            options.append(f'--add-data={folder}{sep}{folder}')
+        src_path = os.path.join(project_root, folder)
+        if os.path.exists(src_path):
+            options.append(f'--add-data={src_path}{sep}{folder}')
         else:
             print(f"Warning: Resource folder '{folder}' not found. Skipping.")
 
@@ -55,7 +58,9 @@ def build():
         print(f"Moved build artifacts to '{result_path}'")
 
     # 빌드 캐시 디렉토리 삭제
+    # 임시 빌드 디렉토리 정리
     if os.path.exists(build_cache_dir):
+        print(f"Cleaning up temporary directory: {build_cache_dir}")
         shutil.rmtree(build_cache_dir)
         print("Cleaned up temporary build files.")
 

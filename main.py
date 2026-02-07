@@ -12,6 +12,8 @@ import glob
 # --- 상태 정의 ---
 STATE_MAP_SELECT = 2
 STATE_SETTINGS = 3
+STATE_INTRO = -2
+STATE_MAIN_MENU = -1
 
 # --- 게임 상태 관리 클래스 ---
 class GameManager:
@@ -59,12 +61,24 @@ class GameManager:
         self.show_save_feedback_timer = 0
         self.save_confirm_open = False
         self.initial_settings = {}
+        self.online_popup_timer = 0
 
     def get_current_damage(self, tower_type):
         d = TOWER_DATA[tower_type]
         dmg = int(d["dmg"] * (1.4 ** (self.damage_level - 1)))
         if self.is_overtime: dmg = int(dmg * 1.5)
         return dmg
+
+    def draw_online_popup(self, surface):
+        if pygame.time.get_ticks() - self.online_popup_timer < 1500:
+            text = Fonts.POPUP_TITLE.render("아직 조이는 중입니다!", True, RED)
+            rect = text.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2))
+            
+            # 배경 박스 (검은색 배경 + 흰색 테두리)
+            bg_rect = rect.inflate(40, 20)
+            pygame.draw.rect(surface, BLACK, bg_rect)
+            pygame.draw.rect(surface, WHITE, bg_rect, 2)
+            surface.blit(text, rect)
 
     def reset(self, target_state=STATE_PLAYING):
         self.gold = 999999 if CHEAT_MODE else 300
@@ -101,9 +115,51 @@ CONFIG_FILE = "launcher_config.json"
 display_mode_setting = 0 # 0: 창모드, 1: 전체화면, 2: 전체화면(창)
 NATIVE_RESOLUTION = RESOLUTION # mte_config에서 가져온 초기(모니터) 해상도 저장
 
+main_bg_image = None
+
+# --- 마리오카트 8 스타일 버튼 클래스 ---
+class MK8Button:
+    def __init__(self, x, y, w, h, text, color, text_color=WHITE):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.text = text
+        self.base_color = color
+        self.text_color = text_color
+        self.skew = 30 # 기울기 정도
+        self.hover_scale = 1.05
+        
+    def draw(self, surface, mx, my):
+        is_hover = self.rect.collidepoint(mx, my)
+        
+        # 색상 및 크기 계산
+        color = (min(255, self.base_color[0]+40), min(255, self.base_color[1]+40), min(255, self.base_color[2]+40)) if is_hover else self.base_color
+        
+        # 평행사변형 좌표 계산 (오른쪽으로 기울어짐)
+        #  /  /
+        points = [
+            (self.rect.x + self.skew, self.rect.y),
+            (self.rect.x + self.rect.w + self.skew, self.rect.y),
+            (self.rect.x + self.rect.w, self.rect.y + self.rect.h),
+            (self.rect.x, self.rect.y + self.rect.h)
+        ]
+        
+        # 그림자 (약간 아래로)
+        shadow_points = [(p[0]+5, p[1]+5) for p in points]
+        pygame.draw.polygon(surface, (0,0,0,100), shadow_points)
+        
+        # 본체
+        pygame.draw.polygon(surface, color, points)
+        pygame.draw.polygon(surface, WHITE, points, 3) # 테두리
+        
+        # 텍스트 (기울기에 맞춰 중앙 정렬 보정)
+        txt_surf = get_text_surface(self.text, Fonts.BTN_LARGE, self.text_color)
+        center_x = self.rect.x + self.rect.w // 2 + self.skew // 2
+        center_y = self.rect.y + self.rect.h // 2
+        surface.blit(txt_surf, (center_x - txt_surf.get_width()//2, center_y - txt_surf.get_height()//2))
+
 def init_ui():
     """현재 해상도(RESOLUTION)에 맞춰 UI 요소들의 위치를 초기화합니다."""
-    global start_btn, map_prev_btn, map_next_btn, map_select_confirm_btn, map_select_back_btn
+    global mk8_play_btn, mk8_online_btn, mk8_settings_btn, mk8_quit_btn
+    global map_prev_btn, map_next_btn, map_select_confirm_btn, map_select_back_btn
     global open_shop_btn, open_settings_btn, speed_btn, quit_btn, retry_btn, next_round_btn
     global settings_back_btn, settings_save_btn, bgm_vol_down_btn, bgm_vol_up_btn, sfx_vol_down_btn, sfx_vol_up_btn
     global display_mode_window_btn, display_mode_fullscreen_btn, settings_jukku_btn, settings_quit_btn
@@ -111,8 +167,19 @@ def init_ui():
     s = RESOLUTION[1] / 1080.0 # UI 크기 비율
     s_w, s_h = RESOLUTION[0], RESOLUTION[1]
 
-    # 메인 화면 버튼
-    start_btn = Button(RESOLUTION[0]//2 - int(150*s), int(RESOLUTION[1] * 0.85), int(300*s), int(80*s), "게 이 시 작 !", BLUE)
+    # --- 메인 메뉴 버튼 (MK8 스타일) ---
+    # 화면 왼쪽 하단에 배치
+    btn_w, btn_h = int(350*s), int(70*s)
+    start_x = int(100*s)
+    start_y = s_h // 2
+    gap = int(20*s)
+
+    mk8_play_btn = MK8Button(start_x, start_y, btn_w, btn_h, "싱글 플레이", BLUE)
+    mk8_online_btn = MK8Button(start_x + int(20*s), start_y + btn_h + gap, btn_w, btn_h, "온라인 대전", (255, 140, 0)) # 오렌지색
+    mk8_settings_btn = MK8Button(start_x + int(40*s), start_y + (btn_h + gap)*2, btn_w, btn_h, "설 정", GRAY)
+    mk8_quit_btn = MK8Button(start_x + int(60*s), start_y + (btn_h + gap)*3, btn_w, btn_h, "종 료", DARK_RED)
+
+    # 맵 선택 화면 버튼
     map_prev_btn = Button(RESOLUTION[0]//2 - int(220*s), int(RESOLUTION[1] * 0.75), int(60*s), int(60*s), "<", GRAY)
     map_next_btn = Button(RESOLUTION[0]//2 + int(160*s), int(RESOLUTION[1] * 0.75), int(60*s), int(60*s), ">", GRAY)
     map_select_confirm_btn = Button(RESOLUTION[0]//2 - int(150*s), int(RESOLUTION[1] * 0.85), int(300*s), int(80*s), "전투 시작", RED)
@@ -157,7 +224,7 @@ def init_ui():
 
 def _update_all_sizes(old_grid_size):
     """해상도 변경에 따라 모든 게임 요소의 크기와 위치를 업데이트합니다."""
-    global background_image, aigonan_gif_frames, building_image, mte21_image, mte22_image, projectile_images
+    global background_image, main_bg_image, aigonan_gif_frames, building_image, mte21_image, mte22_image, projectile_images
 
     # 캐시 초기화 (init_fonts가 TEXT_CACHE를 처리)
     mte_config.RANGE_SURFACE_CACHE.clear()
@@ -165,6 +232,7 @@ def _update_all_sizes(old_grid_size):
     # 해상도 변경에 따른 리소스 및 UI 업데이트
     scale = RESOLUTION[1] / 1080.0
     background_image = load_smart_image("image/yousuck", RESOLUTION)
+    main_bg_image = load_smart_image("image/uring5", RESOLUTION) # 메인 메뉴 배경
     building_image = load_smart_image("image/building", (int(120*scale), int(120*scale)))
     mte21_image = load_smart_image("image/mte21", (int(800*scale), int(800*scale)))
     mte22_image = load_smart_image("image/mte22", (int(800*scale), int(800*scale)))
@@ -436,7 +504,7 @@ def main(skip_intro=False):
 
     clock = pygame.time.Clock()
     
-    initial_state = STATE_MAP_SELECT if skip_intro else STATE_START_SCREEN
+    initial_state = STATE_MAIN_MENU if skip_intro else STATE_INTRO
     reset_game(initial_state)
 
     # --- 메인 루프 ---
@@ -534,8 +602,21 @@ def main(skip_intro=False):
                     continue
 
                 # --- 게임 상태별 처리 ---
-                if gm.mode == STATE_START_SCREEN and start_btn.rect.collidepoint(mx, my):
-                    gm.mode = STATE_MAP_SELECT
+                if gm.mode == STATE_INTRO:
+                    # 인트로에서는 아무 키나 누르면 메인 메뉴로
+                    gm.mode = STATE_MAIN_MENU
+                    
+                elif gm.mode == STATE_MAIN_MENU:
+                    if mk8_play_btn.rect.collidepoint(mx, my):
+                        gm.mode = STATE_MAP_SELECT
+                    elif mk8_online_btn.rect.collidepoint(mx, my):
+                        gm.online_popup_timer = pygame.time.get_ticks()
+                    elif mk8_settings_btn.rect.collidepoint(mx, my):
+                        gm.state_before_settings = STATE_MAIN_MENU
+                        gm.mode = STATE_SETTINGS
+                    elif mk8_quit_btn.rect.collidepoint(mx, my):
+                        gm.quit_confirm_open = True
+                        
                 elif gm.mode == STATE_MAP_SELECT:
                     if map_prev_btn.rect.collidepoint(mx, my):
                         gm.current_map_index = (gm.current_map_index - 1) % len(available_maps)
@@ -545,7 +626,7 @@ def main(skip_intro=False):
                         reset_game(STATE_PLAYING)
                         play_round_music(gm.current_round)
                     elif map_select_back_btn.rect.collidepoint(mx, my):
-                        gm.mode = STATE_START_SCREEN
+                        gm.mode = STATE_MAIN_MENU
 
                 elif gm.mode == STATE_PLAYING:
                     if gm.show_skip_button and next_round_btn.rect.collidepoint(mx, my):
@@ -699,17 +780,28 @@ def main(skip_intro=False):
 
         # --- 그리기 ---
         display_surface.blit(background_image, (0, 0)) if background_image else display_surface.fill(BLACK)
-        if gm.mode == STATE_START_SCREEN:
+        
+        if gm.mode == STATE_INTRO:
+            # 인트로 화면: 원래 디자인(흰색 패널 + 도움말)으로 롤백
             overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))
             panel_w, panel_h = int(RESOLUTION[0] * 0.8), int(RESOLUTION[1] * 0.8)
             h_rect = pygame.Rect((RESOLUTION[0] - panel_w)//2, (RESOLUTION[1] - panel_h)//2, panel_w, panel_h)
             pygame.draw.rect(display_surface, WHITE, h_rect, border_radius=30)
             title_surf = get_text_surface("케인 디펜스 - GayDefense", Fonts.TITLE, BLACK)
             display_surface.blit(title_surf, (h_rect.centerx - title_surf.get_width() // 2, h_rect.y + int(panel_h * 0.1)))
-            helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {gm.round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매"]
+            helps = [f"● 치트(헉) 상태: {'활성' if CHEAT_MODE else '비활성'}", f"● 자! 처치골드: {gm.round_gold_value}G만큼 시작!(1.5배))", "● 40라운드 까지 조이면 최종보스, ", "● 지(으악)라는 광역 공격", "● 방음부스 체력 0 되면 게이ㅁ 종료", "● 타워 우클릭시 70% 가격으로 판매", "", ">>> 아무 키나 눌러서 시작 <<<"]
             for i, txt in enumerate(helps):
-                display_surface.blit(get_text_surface(txt, Fonts.HELP, BLACK), (h_rect.x + int(panel_w * 0.1), h_rect.y + int(panel_h * 0.25) + i * int(panel_h * 0.08)))
-            start_btn.draw(display_surface)
+                color = RED if ">>>" in txt and (pygame.time.get_ticks() // 500) % 2 == 0 else BLACK
+                display_surface.blit(get_text_surface(txt, Fonts.HELP, color), (h_rect.x + int(panel_w * 0.1), h_rect.y + int(panel_h * 0.25) + i * int(panel_h * 0.08)))
+
+        elif gm.mode == STATE_MAIN_MENU:
+            # 메인 메뉴: uring5 배경 + MK8 스타일 버튼
+            if main_bg_image: display_surface.blit(main_bg_image, (0,0))
+            mk8_play_btn.draw(display_surface, mx, my)
+            mk8_online_btn.draw(display_surface, mx, my)
+            mk8_settings_btn.draw(display_surface, mx, my)
+            mk8_quit_btn.draw(display_surface, mx, my)
+            gm.draw_online_popup(display_surface)
             
         elif gm.mode == STATE_MAP_SELECT:
             overlay = pygame.Surface(RESOLUTION, pygame.SRCALPHA); overlay.fill((0,0,0,220)); display_surface.blit(overlay, (0,0))

@@ -8,6 +8,7 @@ import json
 import threading
 import os
 import map_editor
+import version
 
 class ModernButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=50, 
@@ -158,7 +159,7 @@ class LauncherApp:
         self.btn_exit = create_btn("종료", root.quit)
 
         # 하단 버전 정보
-        version_label = tk.Label(root, text="v1.0.0 | GameJoyGo", bg="#121212", fg="#333333", font=("Arial", 9))
+        version_label = tk.Label(root, text=f"{version.VERSION} | GameJoyGo", bg="#121212", fg="#333333", font=("Arial", 9))
         version_label.place(relx=0.98, rely=0.98, anchor="se")
 
     def load_notices(self):
@@ -284,8 +285,7 @@ class LauncherApp:
                 with urllib.request.urlopen(req) as response:
                     data = json.loads(response.read().decode())
                     latest_tag = data['tag_name']
-                    # 현재 버전 하드코딩 (실제로는 변수로 관리 권장)
-                    current_version = "v1.0.0" 
+                    current_version = version.VERSION
                     if latest_tag != current_version:
                         self.root.after(0, lambda: self.show_update_dialog(latest_tag, data['html_url']))
                     else:
