@@ -17,7 +17,7 @@ class ReleaseManager:
     def __init__(self, root):
         self.root = root
         self.root.title("GameJoyGo 배포 관리자")
-        self.root.geometry("500x480")
+        self.root.geometry("500x550")
         self.root.configure(bg="#f0f0f0")
 
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -68,6 +68,14 @@ class ReleaseManager:
         self.entry_ver.pack(fill="x", pady=5)
         self.entry_ver.insert(0, self.local_ver)
         
+        tk.Label(input_frame, text="GitHub Token (비워두면 환경변수 사용):", font=lbl_font, bg="#f0f0f0").pack(anchor="w", pady=(5,0))
+        self.entry_token = tk.Entry(input_frame, font=("Arial", 10), show="*")
+        self.entry_token.pack(fill="x", pady=5)
+        
+        # 환경 변수에 토큰이 있으면 미리 입력
+        if os.getenv("GITHUB_TOKEN"):
+            self.entry_token.insert(0, os.getenv("GITHUB_TOKEN"))
+        
         self.var_git_push = tk.BooleanVar(value=True)
         tk.Checkbutton(input_frame, text="Git Commit & Push 자동 수행", variable=self.var_git_push, bg="#f0f0f0", font=lbl_font).pack(anchor="w", pady=5)
 
@@ -101,9 +109,9 @@ class ReleaseManager:
             messagebox.showwarning("경고", "버전을 입력해주세요.")
             return
             
-        token = os.getenv("GITHUB_TOKEN")
+        token = self.entry_token.get().strip()
         if not token:
-            messagebox.showerror("오류", "GITHUB_TOKEN 환경변수가 없습니다.\n환경 변수를 설정해주세요.")
+            messagebox.showerror("오류", "GitHub Token을 입력해주세요.")
             return
 
         if not messagebox.askyesno("확인", f"버전: {new_ver}\n\n정말로 배포하시겠습니까?"):
