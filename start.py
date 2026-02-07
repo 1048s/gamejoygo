@@ -86,6 +86,8 @@ class LauncherApp:
         self.bgm_var = tk.DoubleVar(value=self.config.get("bgm_volume", 0.3))
         self.cheat_var = tk.BooleanVar(value=self.config.get("cheat_mode", False))
         self.skip_var = tk.BooleanVar(value=self.config.get("skip_intro_screen", False))
+        self.server_ip_var = tk.StringVar(value=self.config.get("server_ip", "127.0.0.1"))
+        self.server_port_var = tk.StringVar(value=str(self.config.get("server_port", "12345")))
 
         self.root.title("Kane Defense Launcher")
         self.root.geometry("900x600")
@@ -198,6 +200,11 @@ class LauncherApp:
         self.config["bgm_volume"] = self.bgm_var.get()
         self.config["sfx_volume"] = self.sfx_var.get()
         self.config["display_mode"] = self.display_var.get()
+        self.config["server_ip"] = self.server_ip_var.get()
+        try:
+            self.config["server_port"] = int(self.server_port_var.get())
+        except:
+            self.config["server_port"] = 12345
         try:
             with open(self.config_file, "w") as f:
                 json.dump(self.config, f, indent=4)
@@ -253,7 +260,18 @@ class LauncherApp:
         create_slider("효과음", self.sfx_var)
         create_slider("배경음", self.bgm_var)
 
-        # 3. OPTIONS
+        # 3. NETWORK
+        add_section("네트워크 설정")
+        net_frame = tk.Frame(frame, bg=bg_color)
+        net_frame.pack(fill='x', pady=2)
+        
+        tk.Label(net_frame, text="IP 주소", font=self.text_font, bg=bg_color, fg=text_color, width=8, anchor="w").pack(side="left")
+        tk.Entry(net_frame, textvariable=self.server_ip_var, font=self.text_font, bg="#252525", fg="white", insertbackground="white", relief="flat").pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        tk.Label(net_frame, text="포트", font=self.text_font, bg=bg_color, fg=text_color, width=4, anchor="w").pack(side="left")
+        tk.Entry(net_frame, textvariable=self.server_port_var, font=self.text_font, bg="#252525", fg="white", insertbackground="white", relief="flat", width=6).pack(side="left")
+
+        # 4. OPTIONS
         add_section("기타 설정")
         tk.Checkbutton(frame, text="치트 모드", variable=self.cheat_var, **rb_style).pack(anchor="w", pady=2)
         tk.Checkbutton(frame, text="인트로 건너뛰기", variable=self.skip_var, **rb_style).pack(anchor="w", pady=2)

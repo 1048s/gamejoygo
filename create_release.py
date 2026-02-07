@@ -63,7 +63,7 @@ class ReleaseManager:
         input_frame = tk.LabelFrame(self.root, text="새 버전 배포", font=("Malgun Gothic", 11, "bold"), bg="#f0f0f0", padx=10, pady=10)
         input_frame.pack(fill="x", padx=p, pady=0)
         
-        tk.Label(input_frame, text="새 버전 입력 (예: v1.0.2):", font=lbl_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(input_frame, text="새 버전 입력 (예: v3.1.8):", font=lbl_font, bg="#f0f0f0").pack(anchor="w")
         self.entry_ver = tk.Entry(input_frame, font=("Arial", 12))
         self.entry_ver.pack(fill="x", pady=5)
         self.entry_ver.insert(0, self.local_ver)
@@ -138,7 +138,7 @@ class ReleaseManager:
             self.root.update()
             
             url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases"
-            payload = {"tag_name": new_ver, "target_commitish": TARGET_BRANCH, "name": f"Release {new_ver}", "body": f"GameJoyGo {new_ver} 업데이트", "generate_release_notes": True}
+            payload = {"tag_name": new_ver, "target_commitish": TARGET_BRANCH, "name": f"Release {new_ver}", "body": f"게이버전 {new_ver} 업데이트 잘 조여달라맨 흐헤헤", "generate_release_notes": True}
             headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json", "User-Agent": "GameJoyGo-Release-Manager"}
             
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')

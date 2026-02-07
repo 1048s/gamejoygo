@@ -8,12 +8,116 @@ from mte_object import *
 import mte_object
 import json
 import glob
+import socket
+import threading
 
 # --- 상태 정의 ---
 STATE_MAP_SELECT = 2
 STATE_SETTINGS = 3
 STATE_INTRO = -2
 STATE_MAIN_MENU = -1
+
+# --- 네트워크 설정 ---
+SERVER_IP = '127.0.0.1' # 테스트용 로컬 IP (실제 배포 시 서버 IP 입력)
+SERVER_PORT = 12345     # server.py의 포트와 같아야 함
+
+# --- 채팅 관리 클래스 ---
+class ChatBox:
+    def __init__(self):
+        self.width = 400
+        self.height = 250
+        self.x = 20
+        self.messages = [] # (text, color)
+        self.input_text = ""
+        self.is_active = False
+        self.cursor_visible = True
+        self.last_cursor_toggle = 0
+        self.font = Fonts.BTN_SMALL # 18px
+        self.socket = None
+        self.connect_thread = None
+        
+    def connect(self):
+        """서버에 연결을 시도합니다."""
+        if self.socket: return
+        def _connect():
+            try:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.connect((SERVER_IP, SERVER_PORT))
+                self.add_message("[시스템] 서버에 연결되었습니다.", GREEN)
+                # 수신 스레드 시작
+                threading.Thread(target=self.receive_loop, daemon=True).start()
+            except Exception as e:
+                self.add_message(f"[시스템] 서버 연결 실패: {e}", RED)
+                self.socket = None
+        self.connect_thread = threading.Thread(target=_connect, daemon=True)
+        self.connect_thread.start()
+
+    def receive_loop(self):
+        while self.socket:
+            try:
+                data = self.socket.recv(1024)
+                if not data: break
+                msg = data.decode('utf-8')
+                self.add_message(msg, WHITE)
+            except:
+                break
+        self.add_message("[시스템] 서버와 연결이 끊어졌습니다.", RED)
+        self.socket = None
+
+    def add_message(self, text, color=WHITE):
+        self.messages.append((text, color))
+        if len(self.messages) > 10:
+            self.messages.pop(0)
+            
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                if self.is_active:
+                    if self.input_text.strip():
+                        msg = f"익명: {self.input_text}"
+                        self.add_message(msg, YELLOW) # 내 메시지는 노란색
+                        # 서버 전송
+                        if self.socket:
+                            try: self.socket.send(msg.encode('utf-8'))
+                            except: pass
+                        self.input_text = ""
+                    self.is_active = False
+                else:
+                    self.is_active = True
+                return True # 이벤트 소비
+            
+            if self.is_active:
+                if event.key == pygame.K_BACKSPACE:
+                    self.input_text = self.input_text[:-1]
+                elif event.key == pygame.K_ESCAPE:
+                    self.is_active = False
+                else:
+                    if event.unicode:
+                        self.input_text += event.unicode
+                return True
+        return False
+
+    def draw(self, surface):
+        current_y = RESOLUTION[1] - self.height - 20
+        
+        # 입력창 (활성화 시에만 표시)
+        if self.is_active:
+            s = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 150))
+            surface.blit(s, (self.x, current_y))
+            pygame.draw.rect(surface, WHITE, (self.x, current_y + self.height - 30, self.width, 30), 1)
+            
+            if pygame.time.get_ticks() - self.last_cursor_toggle > 500:
+                self.cursor_visible = not self.cursor_visible
+                self.last_cursor_toggle = pygame.time.get_ticks()
+                
+            txt_surf = get_text_surface(self.input_text + ("|" if self.cursor_visible else ""), self.font, WHITE)
+            surface.blit(txt_surf, (self.x + 5, current_y + self.height - 25))
+        
+        # 메시지 목록
+        for i, (msg, color) in enumerate(self.messages):
+            msg_y = current_y + self.height - 40 - (len(self.messages) - 1 - i) * 22
+            draw_text_with_outline(surface, msg, self.font, (self.x + 5, msg_y), color, BLACK)
 
 # --- 게임 상태 관리 클래스 ---
 class GameManager:
@@ -62,6 +166,7 @@ class GameManager:
         self.save_confirm_open = False
         self.initial_settings = {}
         self.online_popup_timer = 0
+        self.chat = ChatBox()
 
     def get_current_damage(self, tower_type):
         d = TOWER_DATA[tower_type]
@@ -220,7 +325,7 @@ def init_ui():
     display_mode_fullscreen_btn = Button(s_w//2 + int(10*s), s_h * 0.48, btn_w_small, btn_h, "전체화면", GRAY)
     
     settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.6, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
-    settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.7, btn_w_large, btn_h_large, "게이 종료", DARK_RED)
+    settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.7, btn_w_large, btn_h_large, "메인 메뉴로 이동", GRAY)
 
 def _update_all_sizes(old_grid_size):
     """해상도 변경에 따라 모든 게임 요소의 크기와 위치를 업데이트합니다."""
@@ -440,9 +545,9 @@ def reset_game(target_state=STATE_PLAYING):
 
 def load_game_config():
     """게임 설정을 JSON 파일에서 불러옵니다."""
-    global BGM_VOL, SFX_VOL, display_mode_setting, CHEAT_MODE
+    global BGM_VOL, SFX_VOL, display_mode_setting, CHEAT_MODE, SERVER_IP, SERVER_PORT
     
-    defaults = {"bgm_volume": 0.3, "sfx_volume": 0.5, "display_mode": 0, "cheat_mode": False}
+    defaults = {"bgm_volume": 0.3, "sfx_volume": 0.5, "display_mode": 0, "cheat_mode": False, "server_ip": "127.0.0.1", "server_port": 12345}
     config = defaults.copy()
 
     if os.path.exists(CONFIG_FILE):
@@ -457,6 +562,8 @@ def load_game_config():
     SFX_VOL = config["sfx_volume"]
     display_mode_setting = config["display_mode"]
     CHEAT_MODE = config["cheat_mode"]
+    SERVER_IP = config["server_ip"]
+    SERVER_PORT = config["server_port"]
     
     mte_config.CHEAT_MODE = CHEAT_MODE
     if pygame.mixer.get_init():
@@ -467,7 +574,9 @@ def save_game_config():
     config_to_save = {
         "bgm_volume": BGM_VOL,
         "sfx_volume": SFX_VOL,
-        "display_mode": display_mode_setting
+        "display_mode": display_mode_setting,
+        "server_ip": SERVER_IP,
+        "server_port": SERVER_PORT
     }
     existing_config = {}
     if os.path.exists(CONFIG_FILE):
@@ -527,6 +636,9 @@ def main(skip_intro=False):
 
         # --- 이벤트 처리 ---
         for event in pygame.event.get():
+            # 채팅 입력 중일 때는 다른 키 입력을 막음
+            if gm.chat.handle_event(event): continue
+
             if event.type == pygame.QUIT: running = False
             if event.type == pygame.VIDEORESIZE:
                 if display_mode_setting == 0:
@@ -611,6 +723,7 @@ def main(skip_intro=False):
                         gm.mode = STATE_MAP_SELECT
                     elif mk8_online_btn.rect.collidepoint(mx, my):
                         gm.online_popup_timer = pygame.time.get_ticks()
+                        gm.chat.connect() # 온라인 버튼 누르면 서버 연결 시도
                     elif mk8_settings_btn.rect.collidepoint(mx, my):
                         gm.state_before_settings = STATE_MAIN_MENU
                         gm.mode = STATE_SETTINGS
@@ -684,7 +797,7 @@ def main(skip_intro=False):
                     elif display_mode_window_btn.rect.collidepoint(mx, my) and display_mode_setting != 0: display_mode_setting = 0; update_display_mode()
                     elif display_mode_fullscreen_btn.rect.collidepoint(mx, my) and display_mode_setting != 1: display_mode_setting = 1; update_display_mode()
                     elif settings_jukku_btn.rect.collidepoint(mx, my): gm.jukku_confirm_open = True
-                    elif settings_quit_btn.rect.collidepoint(mx, my): gm.quit_confirm_open = True
+                    elif settings_quit_btn.rect.collidepoint(mx, my): gm.mode = STATE_MAIN_MENU
 
             if event.type == pygame.MOUSEBUTTONUP: gm.is_dragging_shop = False
             if event.type == pygame.MOUSEMOTION:
@@ -859,6 +972,7 @@ def main(skip_intro=False):
                 reward_txt = get_text_surface(f"라운드 클리어 보상: {100 * (gm.current_round + 1)}G", Fonts.TITLE, YELLOW)
                 display_surface.blit(reward_txt, (RESOLUTION[0]//2 - reward_txt.get_width()//2, RESOLUTION[1]//2 - int(50 * (RESOLUTION[1]/1080.0))))
                 next_round_btn.draw(display_surface)
+            gm.chat.draw(display_surface)
         elif gm.mode == STATE_AIGONAN:
             display_surface.fill((20, 0, 0))
             if aigonan_gif_frames:
