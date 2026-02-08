@@ -1,86 +1,132 @@
 import socket
 import threading
+import json
+import random
+import time
 
 # --- 서버 설정 ---
-HOST = '0.0.0.0'  # 모든 IP에서의 접속 허용
-PORT = 12345      # main.py와 포트 일치 (기본: 12345)
+HOST = '0.0.0.0'
+PORT = 12345
 
-clients = []  # 접속한 클라이언트 소켓 리스트
-clients_lock = threading.Lock() # 스레드 안전성을 위한 락
+clients = []        # 접속한 모든 클라이언트
+waiting_queue = []  # 매칭 대기 중인 클라이언트
+games = {}          # 현재 진행 중인 게임 (socket -> opponent_socket)
+clients_lock = threading.Lock()
 
-def broadcast(message, sender_socket=None):
-    """메시지를 모든 클라이언트에게 전송합니다 (보낸 사람 제외 가능)."""
-    with clients_lock:
-        to_remove = []
-        for client in clients:
-            if client != sender_socket:
-                try:
-                    client.send(message)
-                except:
-                    to_remove.append(client)
-        
-        for client in to_remove:
-            if client in clients:
-                clients.remove(client)
-
-def handle_client(client_socket, addr):
-    """각 클라이언트의 메시지 수신을 담당하는 함수"""
-    print(f"[+] 새 연결: {addr}")
-    
-    # 입장 알림
-    broadcast(f"[시스템] 누군가 입장했습니다.".encode('utf-8'), client_socket)
-
-    while True:
-        try:
-            data = client_socket.recv(1024)
-            if not data:
-                break
-            
-            # 받은 메시지를 그대로 다른 사람들에게 전송 (에코/브로드캐스트)
-            broadcast(data, client_socket)
-            
-        except Exception as e:
-            print(f"[-] 연결 끊김: {addr} ({e})")
-            break
-
-    # 퇴장 처리
-    with clients_lock:
-        if client_socket in clients:
-            clients.remove(client_socket)
-    client_socket.close()
-    broadcast(f"[시스템] 누군가 퇴장했습니다.".encode('utf-8'))
-
-def get_local_ip():
-    """현재 서버의 내부 IP 주소를 확인합니다."""
+def send_json(sock, data):
+    """JSON 데이터를 개행 문자와 함께 전송"""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        msg = json.dumps(data) + "\n"
+        sock.send(msg.encode('utf-8'))
     except:
-        return "127.0.0.1"
+        pass
+
+def broadcast(data, sender=None):
+    """모든 클라이언트에게 메시지 전송 (sender 제외)"""
+    with clients_lock:
+        for c in clients:
+            if c != sender:
+                send_json(c, data)
+
+def handle_client(sock, addr):
+    print(f"[+] 연결됨: {addr}")
+    with clients_lock:
+        clients.append(sock)
+    
+    try:
+        buffer = ""
+        while True:
+            data = sock.recv(4096)
+            if not data: break
+            
+            buffer += data.decode('utf-8')
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
+                if not line.strip(): continue
+                try:
+                    pkt = json.loads(line)
+                    process_packet(sock, pkt)
+                except json.JSONDecodeError:
+                    print(f"[!] JSON 파싱 에러: {line}")
+    except Exception as e:
+        print(f"[-] 에러 ({addr}): {e}")
+    finally:
+        cleanup_client(sock)
+
+def process_packet(sock, pkt):
+    ptype = pkt.get("type")
+    
+    if ptype == "MATCH":
+        with clients_lock:
+            if sock in waiting_queue or sock in games: return
+            
+            if len(waiting_queue) > 0:
+                # 대기열에 있는 상대와 매칭
+                opponent = waiting_queue.pop(0)
+                if opponent == sock: # 혹시 모를 자기 자신 매칭 방지
+                    waiting_queue.append(sock)
+                    return
+
+                # 게임 세션 생성
+                games[sock] = opponent
+                games[opponent] = sock
+                
+                # 맵 랜덤 선택 후 게임 시작 신호 전송
+                map_idx = random.randint(0, 2) # 0~2번 맵 중 하나
+                print(f"[!] 게임 시작: {sock.getpeername()} vs {opponent.getpeername()} (Map: {map_idx})")
+                
+                send_json(sock, {"type": "START", "map": map_idx})
+                send_json(opponent, {"type": "START", "map": map_idx})
+            else:
+                # 대기열 등록
+                waiting_queue.append(sock)
+                send_json(sock, {"type": "WAIT"})
+                print(f"[*] 대기열 등록: {sock.getpeername()}")
+
+    elif ptype == "CHAT":
+        # 채팅은 전체 브로드캐스트 (로비/인게임 공용)
+        broadcast({"type": "CHAT", "msg": pkt.get("msg")}, sock)
+
+    elif ptype in ["SPAWN", "HP", "DIE"]:
+        # 게임 상대방에게 패킷 전달
+        with clients_lock:
+            opponent = games.get(sock)
+            if opponent:
+                if ptype == "DIE":
+                    send_json(opponent, {"type": "WIN"})
+                    # 게임 종료 처리 (메모리 정리는 cleanup이나 별도 로직에서)
+                else:
+                    send_json(opponent, pkt)
+
+def cleanup_client(sock):
+    with clients_lock:
+        if sock in clients: clients.remove(sock)
+        if sock in waiting_queue: waiting_queue.remove(sock)
+        
+        # 게임 중이었다면 상대방에게 승리 판정 전송
+        if sock in games:
+            opponent = games[sock]
+            send_json(opponent, {"type": "WIN", "reason": "disconnect"})
+            del games[sock]
+            if opponent in games: del games[opponent]
+            
+    sock.close()
+    print("[-] 클라이언트 퇴장")
 
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         server.bind((HOST, PORT))
         server.listen()
-        print(f"[*] 서버가 {PORT} 포트에서 시작되었습니다.")
-        print(f"[*] 서버 내부 IP: {get_local_ip()}")
-        print(f"[*] 접속 대기 중...")
-
+        print(f"[*] 서버 시작됨 ({PORT})")
+        
         while True:
             client_sock, addr = server.accept()
-            with clients_lock:
-                clients.append(client_sock)
+            threading.Thread(target=handle_client, args=(client_sock, addr), daemon=True).start()
             
-            # 각 클라이언트마다 별도의 스레드 생성
-            thread = threading.Thread(target=handle_client, args=(client_sock, addr), daemon=True)
-            thread.start()
-            print(f"[*] 현재 접속자 수: {len(clients)}")
     except Exception as e:
-        print(f"[!] 서버 시작 실패: {e}")
+        print(f"[!] 서버 실행 실패: {e}")
 
 if __name__ == "__main__":
     start_server()

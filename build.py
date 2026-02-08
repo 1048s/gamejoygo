@@ -20,9 +20,9 @@ def build():
 
     # PyInstaller 옵션 설정
     options = [
-        'main.py',                          # 메인 진입점 파일
+        'start.py',                         # 메인 진입점 파일
         '--name=KaneDefense',               # 생성될 실행 파일 이름
-        '--onefile',                        # 단일 실행 파일로 생성
+        '--onedir',                         # 폴더 형태로 생성 (빌드 속도 빠름)
         '--noconsole',                      # 콘솔 창 숨김 (GUI 프로그램)
         '--clean',                          # 빌드 캐시 정리
         f'--workpath={build_cache_dir}',      # 빌드 작업 경로를 캐시 폴더로 지정

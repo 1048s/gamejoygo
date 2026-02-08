@@ -51,7 +51,8 @@ jobs:
             fi
           done
 
-          python -m PyInstaller --onefile --noconsole \
+          # python -m PyInstaller --onefile --noconsole \
+          python -m PyInstaller --onedir --noconsole \
             --name "${{ matrix.artifact_name }}" \
             $ADD_DATA_ARGS \
             --clean "start.py"
