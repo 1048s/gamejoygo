@@ -48,7 +48,7 @@ class ChatBox:
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.socket.connect((SERVER_IP, SERVER_PORT))
                 self.add_message("[시스템] 서버에 연결되었습니다.", GREEN)
-                self.send_json({"type": "MATCH"})
+                self.send_json({"type": "MATCH", "nickname": NICKNAME})
                 # 수신 스레드 시작
                 threading.Thread(target=self.receive_loop, daemon=True).start()
             except Exception as e:
@@ -83,7 +83,7 @@ class ChatBox:
         if ptype == "CHAT":
             self.add_message(pkt.get("msg"), WHITE)
         elif ptype == "START":
-            if self.gm: self.gm.start_online_game(pkt.get("map", 0))
+            if self.gm: self.gm.start_online_game(pkt.get("map", 0), pkt.get("opponent", "Unknown"))
         elif ptype == "SPAWN":
             if self.gm: self.gm.queue_spawn(pkt.get("mob"))
         elif ptype == "WIN":
@@ -214,6 +214,7 @@ class GameManager:
         self.spawn_queue = []
         self.opponent_hp = 100
         self.opponent_max_hp = 100
+        self.opponent_nickname = "Unknown"
         self.last_hp_sent_time = 0
 
     def get_current_damage(self, tower_type):
@@ -262,10 +263,11 @@ class GameManager:
         self.ending_sound_played, self.quit_confirm_open, self.sell_confirm_open, self.tower_to_sell, self.boss_spawn_count = False, False, False, None, 0
         self.is_overtime, self.overtime_start_time, self.show_skip_button, self.enemies_to_spawn_this_round, self.enemies_spawned_this_round = False, 0, False, 0, 0
 
-    def start_online_game(self, map_idx):
+    def start_online_game(self, map_idx, opponent_name="Unknown"):
         self.reset(STATE_PLAYING)
         self.is_online = True
         self.current_map_index = map_idx
+        self.opponent_nickname = opponent_name
         if available_maps:
             raw_path = available_maps[self.current_map_index]["path"]
             self.enemy_path = [get_c(p[0], p[1]) for p in raw_path]
@@ -345,7 +347,7 @@ def init_ui():
     global map_prev_btn, map_next_btn, map_select_confirm_btn, map_select_back_btn
     global open_shop_btn, open_settings_btn, speed_btn, quit_btn, retry_btn, next_round_btn
     global settings_back_btn, settings_save_btn, bgm_vol_down_btn, bgm_vol_up_btn, sfx_vol_down_btn, sfx_vol_up_btn
-    global display_mode_window_btn, display_mode_fullscreen_btn, settings_jukku_btn, settings_quit_btn, settings_ip_btn, settings_port_btn
+    global display_mode_window_btn, display_mode_fullscreen_btn, settings_jukku_btn, settings_quit_btn, settings_ip_btn, settings_port_btn, settings_nickname_btn
 
     s = RESOLUTION[1] / 1080.0 # UI 크기 비율
     s_w, s_h = RESOLUTION[0], RESOLUTION[1]
@@ -404,9 +406,10 @@ def init_ui():
     
     settings_ip_btn = Button(s_w//2 + int(10*s), s_h * 0.44, btn_w_small, btn_h, "변경", GRAY)
     settings_port_btn = Button(s_w//2 + int(10*s), s_h * 0.52, btn_w_small, btn_h, "변경", GRAY)
+    settings_nickname_btn = Button(s_w//2 + int(10*s), s_h * 0.60, btn_w_small, btn_h, "변경", GRAY)
     
-    settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.65, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
-    settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.75, btn_w_large, btn_h_large, "메인 메뉴로 이동", GRAY)
+    settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.72, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
+    settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.82, btn_w_large, btn_h_large, "메인 메뉴로 이동", GRAY)
     
     settings_back_btn.rect.y = int(s_h * 0.88)
     settings_save_btn.rect.y = int(s_h * 0.88)
@@ -714,7 +717,7 @@ def save_game_config():
 def main(skip_intro=False):
     global running, clock
     global BGM_VOL, SFX_VOL, display_mode_setting, RESOLUTION, background_image, aigonan_gif_frames, display_surface, GRID_SIZE
-    global SERVER_IP, SERVER_PORT
+    global SERVER_IP, SERVER_PORT, NICKNAME
 
     # Pygame 및 믹서 재초기화 (런처 종료 후 안전한 상태 확보)
     if not pygame.get_init():
@@ -833,7 +836,8 @@ def main(skip_intro=False):
                         "sfx_volume": SFX_VOL,
                         "display_mode": display_mode_setting,
                         "server_ip": SERVER_IP,
-                        "server_port": SERVER_PORT
+                        "server_port": SERVER_PORT,
+                        "nickname": NICKNAME
                     }
                     continue
 
@@ -913,7 +917,8 @@ def main(skip_intro=False):
                             gm.initial_settings.get("sfx_volume") != SFX_VOL or
                             gm.initial_settings.get("display_mode") != display_mode_setting or
                             gm.initial_settings.get("server_ip") != SERVER_IP or
-                            gm.initial_settings.get("server_port") != SERVER_PORT
+                            gm.initial_settings.get("server_port") != SERVER_PORT or
+                            gm.initial_settings.get("nickname") != NICKNAME
                         )
                         if has_changes:
                             gm.save_confirm_open = True
@@ -927,7 +932,8 @@ def main(skip_intro=False):
                             "sfx_volume": SFX_VOL,
                             "display_mode": display_mode_setting,
                             "server_ip": SERVER_IP,
-                            "server_port": SERVER_PORT
+                            "server_port": SERVER_PORT,
+                            "nickname": NICKNAME
                         }
                         gm.show_save_feedback_timer = 2 # 2초 동안 피드백 표시
                     elif bgm_vol_down_btn.rect.collidepoint(mx, my): BGM_VOL = max(0.0, round(BGM_VOL - 0.1, 1)); pygame.mixer.music.set_volume(BGM_VOL)
@@ -942,6 +948,9 @@ def main(skip_intro=False):
                     elif settings_port_btn.rect.collidepoint(mx, my):
                         new_port = show_text_input_dialog(display_surface, "서버 포트 입력", str(SERVER_PORT))
                         if new_port is not None and new_port.isdigit(): SERVER_PORT = int(new_port)
+                    elif settings_nickname_btn.rect.collidepoint(mx, my):
+                        new_nick = show_text_input_dialog(display_surface, "닉네임 입력", NICKNAME)
+                        if new_nick is not None: NICKNAME = new_nick
                     elif settings_jukku_btn.rect.collidepoint(mx, my): gm.jukku_confirm_open = True
                     elif settings_quit_btn.rect.collidepoint(mx, my): gm.mode = STATE_MAIN_MENU
 
@@ -1141,7 +1150,7 @@ def main(skip_intro=False):
                 pygame.draw.rect(display_surface, BLACK, (bar_x, bar_y, bar_w, bar_h))
                 pygame.draw.rect(display_surface, RED, (bar_x, bar_y, int(bar_w * opp_hp_ratio), bar_h))
                 pygame.draw.rect(display_surface, WHITE, (bar_x, bar_y, bar_w, bar_h), 2)
-                draw_text_with_outline(display_surface, f"상대방 HP: {gm.opponent_hp}", Fonts.UI, (bar_x + 10, bar_y + 2), WHITE, BLACK)
+                draw_text_with_outline(display_surface, f"{gm.opponent_nickname}: {gm.opponent_hp}", Fonts.UI, (bar_x + 10, bar_y + 2), WHITE, BLACK)
 
             if gm.current_round > 40:
                 if not gm.ending_sound_played: pygame.mixer.music.stop(); pygame.mixer.stop(); (oh_sound.play() if oh_sound else None); gm.ending_sound_played = True
@@ -1199,6 +1208,8 @@ def main(skip_intro=False):
             settings_ip_btn.draw(display_surface) # Redraw over dummy
             draw_setting_item(s_h * 0.52, "서버 포트", str(SERVER_PORT), settings_port_btn, Button(0,0,0,0,"",BLACK))
             settings_port_btn.draw(display_surface)
+            draw_setting_item(s_h * 0.60, "닉네임", NICKNAME, settings_nickname_btn, Button(0,0,0,0,"",BLACK))
+            settings_nickname_btn.draw(display_surface)
 
             settings_jukku_btn.draw(display_surface); settings_quit_btn.draw(display_surface)
             settings_back_btn.draw(display_surface)

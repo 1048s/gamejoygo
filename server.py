@@ -11,6 +11,7 @@ PORT = 12345
 clients = []        # 접속한 모든 클라이언트
 waiting_queue = []  # 매칭 대기 중인 클라이언트
 games = {}          # 현재 진행 중인 게임 (socket -> opponent_socket)
+nicknames = {}      # socket -> nickname
 clients_lock = threading.Lock()
 
 def send_json(sock, data):
@@ -58,6 +59,7 @@ def process_packet(sock, pkt):
     
     if ptype == "MATCH":
         with clients_lock:
+            nicknames[sock] = pkt.get("nickname", "Unknown")
             if sock in waiting_queue or sock in games: return
             
             if len(waiting_queue) > 0:
@@ -73,10 +75,13 @@ def process_packet(sock, pkt):
                 
                 # 맵 랜덤 선택 후 게임 시작 신호 전송
                 map_idx = random.randint(0, 2) # 0~2번 맵 중 하나
-                print(f"[!] 게임 시작: {sock.getpeername()} vs {opponent.getpeername()} (Map: {map_idx})")
+                p1_nick = nicknames.get(sock, "Player")
+                p2_nick = nicknames.get(opponent, "Player")
                 
-                send_json(sock, {"type": "START", "map": map_idx})
-                send_json(opponent, {"type": "START", "map": map_idx})
+                print(f"[!] 게임 시작: {p1_nick} vs {p2_nick} (Map: {map_idx})")
+                
+                send_json(sock, {"type": "START", "map": map_idx, "opponent": p2_nick})
+                send_json(opponent, {"type": "START", "map": map_idx, "opponent": p1_nick})
             else:
                 # 대기열 등록
                 waiting_queue.append(sock)
@@ -102,6 +107,7 @@ def cleanup_client(sock):
     with clients_lock:
         if sock in clients: clients.remove(sock)
         if sock in waiting_queue: waiting_queue.remove(sock)
+        if sock in nicknames: del nicknames[sock]
         
         # 게임 중이었다면 상대방에게 승리 판정 전송
         if sock in games:

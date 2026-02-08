@@ -41,7 +41,7 @@ def build():
     PyInstaller.__main__.run(options)
 
     # 결과 폴더 생성 및 파일 이동 (dist -> result)
-    result_path = os.path.abspath("result")
+    result_path = os.path.abspath(os.path.join(project_root, "..", "result"))
     if not os.path.exists(result_path):
         os.makedirs(result_path)
 

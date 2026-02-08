@@ -17,15 +17,18 @@ jobs:
           - os: windows-latest
             artifact_name: KaneDefense-Win
             sep: ";"
-            ext: ".exe"
+            mode: --onedir
+            upload_path: dist/KaneDefense-Win.exe
           - os: ubuntu-latest
             artifact_name: KaneDefense-Linux
             sep: ":"
-            ext: ""
+            mode: --onedir
+            upload_path: dist/KaneDefense-Linux.zip
           - os: macos-latest
             artifact_name: KaneDefense-Mac
             sep: ":"
-            ext: ".dmg"
+            mode: --onefile
+            upload_path: dist/KaneDefense-Mac
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -51,18 +54,23 @@ jobs:
             fi
           done
 
-          # python -m PyInstaller --onefile --noconsole \
-          python -m PyInstaller --onedir --noconsole \
+          python -m PyInstaller ${{ matrix.mode }} --noconsole \
             --name "${{ matrix.artifact_name }}" \
             $ADD_DATA_ARGS \
             --clean "start.py"
 
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             cd dist
-            mkdir dmg_source
-            mv "${{ matrix.artifact_name }}.app" dmg_source/
-            ln -s /Applications dmg_source/Applications
-            hdiutil create -volname "${{ matrix.artifact_name }}" -srcfolder dmg_source -ov -format UDZO "${{ matrix.artifact_name }}.dmg"
+            # 7-Zip SFX (Self-extracting archive) 생성
+            7z a -sfx -mx9 "${{ matrix.artifact_name }}.exe" "${{ matrix.artifact_name }}"
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            cd dist
+            zip -r "${{ matrix.artifact_name }}.zip" "${{ matrix.artifact_name }}"
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            # Mac onefile 빌드 시 .app 번들이 생성되므로 내부 실행 파일만 추출
+            if [ -d "dist/${{ matrix.artifact_name }}.app" ]; then
+              mv "dist/${{ matrix.artifact_name }}.app/Contents/MacOS/${{ matrix.artifact_name }}" "dist/${{ matrix.artifact_name }}"
+            fi
           fi
 
       - name: Upload Artifact
@@ -70,7 +78,7 @@ jobs:
         with:
           # 각 운영체제별로 독립된 폴더에 저장
           name: ${{ matrix.artifact_name }}-bin
-          path: dist/${{ matrix.artifact_name }}${{ matrix.ext }}
+          path: ${{ matrix.upload_path }}
 
   release:
     needs: [build-desktop]
@@ -97,7 +105,7 @@ jobs:
           # 중복 경로 방지를 위해 정밀하게 파일 지정
           files: |
             ./release_files/**/*.exe
-            ./release_files/**/KaneDefense-Linux
-            ./release_files/**/*.dmg
+            ./release_files/**/*.zip
+            ./release_files/**/KaneDefense-Mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
