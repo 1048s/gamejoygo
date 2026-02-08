@@ -5,5 +5,7 @@
     "cheat_mode": true,
     "bgm_volume": 0.3,
     "sfx_volume": 0.5,
-    "display_mode": 1
+    "display_mode": 1,
+    "server_ip": "127.0.0.1",
+    "server_port": 12345
 }

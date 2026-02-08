@@ -215,7 +215,7 @@ class LauncherApp:
         """설정 팝업창을 엽니다."""
         settings_win = tk.Toplevel(self.root)
         settings_win.title("설정")
-        settings_win.geometry("400x520")
+        settings_win.geometry("400x600")
         settings_win.configure(bg="#121212")
         settings_win.resizable(False, False)
         settings_win.transient(self.root)
