@@ -30,7 +30,7 @@ def build():
     ]
 
     # 리소스 데이터 포함 (소스경로:대상경로) - 폴더가 존재할 때만 추가
-    for folder in ['image', 'sound', 'font']:
+    for folder in ['image', 'sound', 'font', 'maps']:
         src_path = os.path.join(project_root, folder)
         if os.path.exists(src_path):
             options.append(f'--add-data={src_path}{sep}{folder}')

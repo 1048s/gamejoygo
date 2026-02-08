@@ -156,6 +156,7 @@ class LauncherApp:
             return btn
 
         self.btn_start = create_btn("게임 시작", self.start_game, primary=True)
+        self.btn_nickname = create_btn(f"닉네임 변경", self.open_nickname_window)
         self.btn_settings = create_btn("설정", self.open_settings_window)
         self.btn_editor = create_btn("맵 에디터", self.open_editor)
         self.btn_update = create_btn("업데이트 확인", self.check_update)
@@ -217,7 +218,7 @@ class LauncherApp:
         """설정 팝업창을 엽니다."""
         settings_win = tk.Toplevel(self.root)
         settings_win.title("설정")
-        settings_win.geometry("400x600")
+        settings_win.geometry("400x550")
         settings_win.configure(bg="#121212")
         settings_win.resizable(False, False)
         settings_win.transient(self.root)
@@ -272,9 +273,6 @@ class LauncherApp:
         
         tk.Label(net_frame, text="포트", font=self.text_font, bg=bg_color, fg=text_color, width=4, anchor="w").pack(side="left")
         tk.Entry(net_frame, textvariable=self.server_port_var, font=self.text_font, bg="#252525", fg="white", insertbackground="white", relief="flat", width=6).pack(side="left")
-        
-        tk.Label(net_frame, text="닉네임", font=self.text_font, bg=bg_color, fg=text_color, width=8, anchor="w").pack(side="left", padx=(10, 0))
-        tk.Entry(net_frame, textvariable=self.nickname_var, font=self.text_font, bg="#252525", fg="white", insertbackground="white", relief="flat").pack(side="left", fill="x", expand=True)
 
         # 4. OPTIONS
         add_section("기타 설정")
@@ -289,6 +287,45 @@ class LauncherApp:
         btn = ModernButton(settings_win, text="저장하고 닫기", command=save_and_close, width=340, height=50,
                            bg_color=accent_color, hover_color="#FF5555", font=self.btn_font)
         btn.pack(fill="x", padx=30, pady=30)
+
+    def open_nickname_window(self):
+        """닉네임 설정 팝업창을 엽니다."""
+        nick_win = tk.Toplevel(self.root)
+        nick_win.title("닉네임 변경")
+        nick_win.geometry("350x200")
+        nick_win.configure(bg="#121212")
+        nick_win.resizable(False, False)
+        nick_win.transient(self.root)
+        nick_win.grab_set()
+
+        # 화면 중앙 배치
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 175
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        nick_win.geometry(f"+{x}+{y}")
+
+        tk.Label(nick_win, text="닉네임 설정", font=("Malgun Gothic", 16, "bold"), bg="#121212", fg="#FF3333").pack(pady=(20, 10))
+        
+        frame = tk.Frame(nick_win, bg="#121212", padx=20)
+        frame.pack(fill="x")
+
+        tk.Label(frame, text="사용할 닉네임을 입력하세요:", font=self.text_font, bg="#121212", fg="#CCCCCC").pack(anchor="w", pady=(0, 5))
+        
+        entry_bg = "#252525"
+        entry_fg = "white"
+        
+        nick_entry = tk.Entry(frame, textvariable=self.nickname_var, font=("Malgun Gothic", 12), bg=entry_bg, fg=entry_fg, insertbackground="white", relief="flat")
+        nick_entry.pack(fill="x", ipady=5)
+        
+        def save_nick():
+            self.save_config()
+            nick_win.destroy()
+            
+        btn = ModernButton(nick_win, text="확인", command=save_nick, width=150, height=40,
+                           bg_color="#FF3333", hover_color="#FF5555", font=self.btn_font)
+        btn.pack(pady=20)
+        
+        nick_entry.focus_set()
+        nick_entry.bind("<Return>", lambda e: save_nick())
 
     def start_game(self):
         self.should_launch_game = True

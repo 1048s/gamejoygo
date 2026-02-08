@@ -9,9 +9,7 @@ import mte_object
 import json
 import glob
 import socket
-import socket
 import threading
-import online_client
 
 # --- 상태 정의 ---
 STATE_MAP_SELECT = 2
@@ -740,10 +738,10 @@ def save_game_config():
     except Exception as e:
         print(f"Error saving config: {e}")
 
-def main(skip_intro=False):
+def run_online():
     global running, clock
     global BGM_VOL, SFX_VOL, display_mode_setting, RESOLUTION, background_image, aigonan_gif_frames, display_surface, GRID_SIZE
-    global SERVER_IP, SERVER_PORT, NICKNAME
+    global SERVER_IP, SERVER_PORT, NICKNAME, gm
 
     # Pygame 및 믹서 재초기화 (런처 종료 후 안전한 상태 확보)
     if not pygame.get_init():
@@ -857,6 +855,16 @@ def main(skip_intro=False):
                     if pygame.Rect(px+60, py+140, 160, 60).collidepoint(mx, my): pygame.mixer.music.stop(); gm.mode = STATE_AIGONAN; gm.jukku_confirm_open = False; (aigonan_sound.play() if aigonan_sound else None)
                     elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): gm.jukku_confirm_open = False
                     continue
+                if gm.online_confirm_open:
+                    ox, oy = (RESOLUTION[0]-600)//2, (RESOLUTION[1]-300)//2
+                    # 예(조이기) 버튼
+                    if pygame.Rect(ox+100, oy+200, 180, 60).collidepoint(mx, my):
+                         gm.online_confirm_open = False
+                         gm.mode = STATE_WAITING
+                         gm.chat.connect()
+                    # 아니오(안조이기) 버튼
+                    elif pygame.Rect(ox+320, oy+200, 180, 60).collidepoint(mx, my):
+                        gm.online_confirm_open = False
                     continue
                 
                 if gm.mode != STATE_SETTINGS and open_settings_btn.rect.collidepoint(mx, my):
@@ -883,13 +891,10 @@ def main(skip_intro=False):
                         gm.mode = STATE_MAP_SELECT
                         gm.chat.disconnect()
                     elif mk8_online_btn.rect.collidepoint(mx, my):
-                        # 온라인 모드 실행 (모듈 함수 호출)
-                        online_client.run_online()
-                        
-                        # 온라인 모드 종료 후 복귀 처리
-                        update_display_mode() # 화면 모드 재설정
-                        gm.mode = STATE_MAIN_MENU
-                        pygame.mixer.stop(); pygame.mixer.music.stop() # 온라인 소리 정지
+                        gm.online_confirm_open = True
+                    elif mk8_settings_btn.rect.collidepoint(mx, my):
+                        gm.state_before_settings = STATE_MAIN_MENU
+                        gm.mode = STATE_SETTINGS
                     elif mk8_quit_btn.rect.collidepoint(mx, my):
                         gm.quit_confirm_open = True
                         
@@ -1300,10 +1305,25 @@ def main(skip_intro=False):
         if gm.quit_confirm_open:
             qx, qy = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2; pygame.draw.rect(display_surface, WHITE, (qx, qy, 500, 250), border_radius=20)
             display_surface.blit(get_text_surface("정말 종료하시겠습니까?", Fonts.POPUP_TITLE, BLACK), (qx+100, qy+60))
+            display_surface.blit(get_text_surface("정말 종료하시겠습니까?", Fonts.POPUP_TITLE, BLACK), (qx+100, qy+60))
             Button(qx+60, qy+140, 160, 60, "조이기", RED).draw(display_surface); Button(qx+280, qy+140, 160, 60, "안조이기", GRAY).draw(display_surface)
 
+        if gm.online_confirm_open:
+            ox, oy = (RESOLUTION[0]-600)//2, (RESOLUTION[1]-300)//2
+            pygame.draw.rect(display_surface, WHITE, (ox, oy, 600, 300), border_radius=20)
+            
+            msg1 = get_text_surface(f"'{NICKNAME}'(으)로", Fonts.TITLE, BLUE)
+            msg2 = get_text_surface("게임을 시작하시겠습니까?", Fonts.POPUP_TITLE, BLACK)
+            
+            display_surface.blit(msg1, (ox + (600 - msg1.get_width())//2, oy + 50))
+            display_surface.blit(msg2, (ox + (600 - msg2.get_width())//2, oy + 130))
+            
+            Button(ox+100, oy+200, 180, 60, "조이기", RED).draw(display_surface)
+            Button(ox+320, oy+200, 180, 60, "안조이기", GRAY).draw(display_surface)
         pygame.display.update()
-    pygame.quit(); sys.exit()
+    
+    # 종료 시 리소스 정리 및 메인 메뉴 복귀를 위해 소켓 종료
+    gm.chat.disconnect()
+    # pygame.quit() 호출하지 않음 (main.py로 복귀)
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__": main() 제거됨

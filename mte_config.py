@@ -133,9 +133,11 @@ def load_gif_frames_21_9(filename, target_width):
 
 def load_sound(file_path):
     full_path = resource_path(file_path)
-    if os.path.exists(full_path): 
-        s = pygame.mixer.Sound(full_path); s.set_volume(SFX_VOL)
-        return s
+    if os.path.exists(full_path):
+        try:
+            s = pygame.mixer.Sound(full_path); s.set_volume(SFX_VOL)
+            return s
+        except: return None
     return None
 
 # --- 데이터 ---
