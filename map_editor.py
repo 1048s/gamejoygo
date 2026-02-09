@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox, simpledialog
 import json
 import os
 
-# --- 설정 ---
+# --- 설정 --- 2026-02-09
 # 게임 내 설정과 맞춤 (mte_config.py 참고)
 # 에디터 화면에 다 들어오도록 시각적 크기는 절반(40)으로 줄이고, 논리적 좌표는 그대로 사용
 VISUAL_GRID_SIZE = 40 
