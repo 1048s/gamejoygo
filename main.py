@@ -402,7 +402,7 @@ def init_ui():
     speed_btn = Button(speed_btn_x, int(RESOLUTION[1] * 0.02), speed_btn_w, int(50*s), "배속: 1x", BLACK)
 
     # 기타 버튼
-    quit_btn = Button(RESOLUTION[0]-int(180*s), int(RESOLUTION[1] * 0.02), int(160*s), int(50*s), "게이 종료", DARK_RED)
+    quit_btn = Button(RESOLUTION[0]-int(180*s), int(RESOLUTION[1] * 0.02), int(160*s), int(50*s), "게임 종료", DARK_RED)
     retry_btn = Button(RESOLUTION[0]//2 - int(150*s), int(RESOLUTION[1] * 0.8), int(300*s), int(80*s), "다시 조이기", BLUE)
     next_round_btn = Button(RESOLUTION[0]//2 - int(150*s), RESOLUTION[1]//2 + int(60*s), int(300*s), int(80*s), "다음라운드", BLUE)
     
@@ -428,7 +428,6 @@ def init_ui():
     settings_port_btn = Button(s_w//2 + int(10*s), s_h * 0.52, btn_w_small, btn_h, "변경", GRAY)
     settings_nickname_btn = Button(s_w//2 + int(10*s), s_h * 0.60, btn_w_small, btn_h, "변경", GRAY)
     
-    settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.72, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
     settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.72, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
     settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.82, btn_w_large, btn_h_large, "메인 메뉴로 이동", GRAY)
     settings_cheat_btn = Button(s_w//2 + int(10*s), s_h * 0.72, int(150*s), int(50*s), "치트: 끄기", GRAY) # 동적으로 텍스트 변경
@@ -851,12 +850,6 @@ def main(skip_intro=False):
                     px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
                     if pygame.Rect(px+60, py+140, 160, 60).collidepoint(mx, my): pygame.mixer.music.stop(); gm.mode = STATE_AIGONAN; gm.jukku_confirm_open = False; (aigonan_sound.play() if aigonan_sound else None)
                     elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): gm.jukku_confirm_open = False
-                    continue
-                if gm.jukku_confirm_open:
-                    px, py = (RESOLUTION[0]-500)//2, (RESOLUTION[1]-250)//2
-                    if pygame.Rect(px+60, py+140, 160, 60).collidepoint(mx, my): pygame.mixer.music.stop(); gm.mode = STATE_AIGONAN; gm.jukku_confirm_open = False; (aigonan_sound.play() if aigonan_sound else None)
-                    elif pygame.Rect(px+280, py+140, 160, 60).collidepoint(mx, my): gm.jukku_confirm_open = False
-                    continue
                     continue
                 
                 if gm.mode != STATE_SETTINGS and open_settings_btn.rect.collidepoint(mx, my):
