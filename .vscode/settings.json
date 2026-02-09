@@ -1,6 +1,9 @@
 {
     "github-actions.workflows.pinned.workflows": [
         ".github/workflows/build.yml"
-    ]
-
+    ],
+    "python.envFile": "${workspaceFolder}/.env",
+    "terminal.integrated.env.windows": {
+        "PYTHONPYCACHEPREFIX": "C:\\Users\\Kwi0192\\AppData\\Local\\Temp\\gamejoygo_pycache"
+    }
 }
