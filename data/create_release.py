@@ -68,7 +68,7 @@ class ReleaseManager:
         self.entry_ver.pack(fill="x", pady=5)
         self.entry_ver.insert(0, self.local_ver)
         
-        tk.Label(input_frame, text="GitHub Token (비워두면 환경변수 사용):", font=lbl_font, bg="#f0f0f0").pack(anchor="w", pady=(5,0))
+        tk.Label(input_frame, text="GitHub Token:", font=lbl_font, bg="#f0f0f0").pack(anchor="w", pady=(5,0))
         self.entry_token = tk.Entry(input_frame, font=("Arial", 10), show="*")
         self.entry_token.pack(fill="x", pady=5)
         
