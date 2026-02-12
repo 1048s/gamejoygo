@@ -2,16 +2,18 @@ import pygame
 import sys
 import math
 import os
-from mte_config import *
-import mte_config
-from mte_object import *
-import mte_object
+from modules.mte_config import *
+from modules import mte_config
+from modules.mte_object import *
+from modules import mte_object
 import json
 import glob
 import socket
 import socket
+import traceback
 import threading
-import online_client
+from modules import online_client
+from modules.mte_shared import MK8Button, draw_text_with_outline, PygameChatBox, GameManager
 
 # --- 상태 정의 ---
 STATE_MAP_SELECT = 2
@@ -24,296 +26,23 @@ STATE_WIN = 5
 # --- 네트워크 설정 ---
 SERVER_IP = '127.0.0.1' # 테스트용 로컬 IP (실제 배포 시 서버 IP 입력)
 SERVER_PORT = 12345     # server.py의 포트와 같아야 함
+NICKNAME = "Player"     # 기본 닉네임
 
 # --- 채팅 관리 클래스 ---
-class ChatBox:
-    def __init__(self):
-        self.gm = None
-        self.width = 400
-        self.height = 250
-        self.x = 20
-        self.messages = [] # (text, color)
-        self.input_text = ""
-        self.is_active = False
-        self.cursor_visible = True
-        self.last_cursor_toggle = 0
-        self.font = Fonts.BTN_SMALL # 18px
-        self.socket = None
-        self.connect_thread = None
-        self.buffer = ""
-        
-    def connect(self):
-        """서버에 연결을 시도합니다."""
-        if self.socket: return
-        def _connect():
-            try:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.connect((SERVER_IP, SERVER_PORT))
-                self.add_message("[시스템] 서버에 연결되었습니다.", GREEN)
-                self.send_json({"type": "MATCH", "nickname": NICKNAME})
-                # 수신 스레드 시작
-                threading.Thread(target=self.receive_loop, daemon=True).start()
-            except Exception as e:
-                self.add_message(f"[시스템] 서버 연결 실패: {e}", RED)
-                self.socket = None
-        self.connect_thread = threading.Thread(target=_connect, daemon=True)
-        self.connect_thread.start()
-
-    def receive_loop(self):
-        while self.socket:
-            try:
-                data = self.socket.recv(4096)
-                if not data: break
-                self.buffer += data.decode('utf-8')
-                while '\n' in self.buffer:
-                    line, self.buffer = self.buffer.split('\n', 1)
-                    if not line.strip(): continue
-                    try:
-                        pkt = json.loads(line)
-                        self.handle_packet(pkt)
-                    except json.JSONDecodeError:
-                        self.add_message(line, WHITE)
-            except:
-                break
-        self.add_message("[시스템] 서버와 연결이 끊어졌습니다.", RED)
-        self.socket = None
-        if self.gm and self.gm.is_online:
-            self.gm.mode = STATE_MAIN_MENU
-
-    def handle_packet(self, pkt):
-        ptype = pkt.get("type")
-        if ptype == "CHAT":
-            self.add_message(pkt.get("msg"), WHITE)
-        elif ptype == "START":
-            if self.gm: self.gm.start_online_game(pkt.get("map", 0), pkt.get("opponent", "Unknown"))
-        elif ptype == "SPAWN":
-            if self.gm: self.gm.queue_spawn(pkt.get("mob"))
-        elif ptype == "WIN":
-            if self.gm: self.gm.mode = STATE_WIN
-        elif ptype == "WAIT":
-            self.add_message("[시스템] 대전 상대를 찾는 중입니다...", YELLOW)
-        elif ptype == "HP":
-            if self.gm:
-                self.gm.update_opponent_hp(pkt.get("hp"), pkt.get("max_hp"))
-        elif ptype == "TIME":
-            if self.gm:
-                self.gm.sync_time(pkt)
-
-    def disconnect(self):
-        if self.socket:
-            try:
-                self.socket.close()
-            except: pass
-            self.socket = None
-
-    def send_json(self, data):
-        if self.socket:
-            try:
-                msg = json.dumps(data) + "\n"
-                self.socket.send(msg.encode('utf-8'))
-            except: pass
-
-    def add_message(self, text, color=WHITE):
-        self.messages.append((text, color))
-        if len(self.messages) > 10:
-            self.messages.pop(0)
-            
-    def open_chat_popup(self):
-        """채팅 입력을 위한 tkinter 팝업을 엽니다."""
-        # 메인 스레드에서 실행되는 것을 보장하지 못할 수 있으므로 주의 필요하지만, 
-        # pygame 이벤트 루프 안에서 호출되므로 괜찮음.
-        
-        try:
-            import tkinter as tk
-            from tkinter import simpledialog
-            
-            # tkinter 루트가 없으면 임시 생성
-            root = tk.Tk()
-            root.withdraw() # 메인 창 숨김
-            
-            # 화면 중앙 계산
-            ws = root.winfo_screenwidth()
-            hs = root.winfo_screenheight()
-            x = (ws/2) - (300/2)
-            y = (hs/2) - (150/2)
-            root.geometry(f"+{int(x)}+{int(y)}")
-
-            msg = simpledialog.askstring("채팅 입력", "메시지를 입력하세요:", parent=root)
-            root.destroy()
-            
-            if msg and msg.strip():
-                formatted_msg = f"{NICKNAME}: {msg}" # NICKNAME 전역 변수 사용
-                self.add_message(formatted_msg, YELLOW)
-                self.send_json({"type": "CHAT", "msg": formatted_msg})
-                
-        except Exception as e:
-            print(f"Chat popup error: {e}")
-
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                if self.gm and self.gm.is_online:
-                     self.open_chat_popup()
-                return True
-        return False
-
-    def draw(self, surface):
-        current_y = RESOLUTION[1] - self.height - 20
-        
-        # 메시지 목록 (이전과 동일)
-        
-        # 메시지 목록
-        for i, (msg, color) in enumerate(self.messages):
-            msg_y = current_y + self.height - 40 - (len(self.messages) - 1 - i) * 22
-            draw_text_with_outline(surface, msg, self.font, (self.x + 5, msg_y), color, BLACK)
+# --- 채팅 관리 클래스는 mte_shared에서 import 함 ---
 
 # --- 게임 상태 관리 클래스 ---
-class GameManager:
-    def __init__(self):
-        self.mode = STATE_MAP_SELECT
-        self.gold = 300
-        self.damage_level = 1
-        self.hp_level = 1
-        self.range_level = 1
-        self.game_speed = 1
-        self.virtual_elapsed_time = 0.0
-        self.current_round = 1
-        self.selected_tower_type = "PRINCESS"
-        self.time_left = 0
-        self.gif_frame_idx = 0
-        self.round_gold_value = 15
-        self.range_gold_val = 150
-        self.damage_gold_val = 50
-        self.hp_gold_val = 200
-        self.enemies_to_spawn_this_round = 0
-        self.enemies_spawned_this_round = 0
-        self.enemies = []
-        self.towers = []
-        self.projectiles = []
-        self.round_start_time = 0.0
-        self.nexus = None
-        self.shop_open = False
-        self.jukku_confirm_open = False
-        self.last_spawn_time = 0
-        self.is_break_time = True
-        self.shop_pos = [0, 0]
-        self.is_dragging_shop = False
-        self.drag_offset = [0, 0]
-        self.show_skip_button = False
-        self.ending_sound_played = False
-        self.quit_confirm_open = False
-        self.sell_confirm_open = False
-        self.tower_to_sell = None
-        self.boss_spawn_count = 0
-        self.is_overtime = False
-        self.overtime_start_time = 0
-        self.enemy_path = []
-        self.current_map_index = 0
-        self.state_before_settings = STATE_PLAYING
-        self.show_save_feedback_timer = 0
-        self.save_confirm_open = False
-        self.initial_settings = {}
-        self.online_popup_timer = 0
-        self.chat = ChatBox()
-        self.chat.gm = self
-        self.is_online = False
-        self.spawn_queue = []
-        self.opponent_hp = 100
-        self.opponent_max_hp = 100
-        self.opponent_nickname = "Unknown"
-        self.last_hp_sent_time = 0
-        self.online_confirm_open = False
+# --- 게임 상태 관리 클래스는 mte_shared에서 import 함 ---
 
-    def get_current_damage(self, tower_type):
-        d = TOWER_DATA[tower_type]
-        dmg = int(d["dmg"] * (1.4 ** (self.damage_level - 1)))
-        if self.is_overtime: dmg = int(dmg * 1.5)
-        return dmg
+def get_nickname():
+    return NICKNAME
 
-    def draw_online_popup(self, surface):
-        if pygame.time.get_ticks() - self.online_popup_timer < 1500:
-            text = Fonts.POPUP_TITLE.render("아직 조이는 중입니다!", True, RED)
-            rect = text.get_rect(center=(RESOLUTION[0]//2, RESOLUTION[1]//2))
-            
-            # 배경 박스 (검은색 배경 + 흰색 테두리)
-            bg_rect = rect.inflate(40, 20)
-            pygame.draw.rect(surface, BLACK, bg_rect)
-            pygame.draw.rect(surface, WHITE, bg_rect, 2)
-            surface.blit(text, rect)
-
-    def reset(self, target_state=STATE_PLAYING):
-        self.is_online = False
-        self.opponent_hp, self.opponent_max_hp = 100, 100
-        # 온라인 모드면 치트 강제 비활성화
-        is_cheat = CHEAT_MODE and not self.is_online
-        self.gold = 999999 if is_cheat else 300
-        self.round_gold_value = 15
-        self.damage_level, self.hp_level, self.range_level, self.game_speed, self.virtual_elapsed_time, self.current_round = 1, 1, 1, 1, 0.0, 1
-        self.damage_gold_val, self.hp_gold_val, self.range_gold_val = 50, 200, 150
-        self.time_left = 10 + (self.current_round * 5)
-        self.round_start_time, self.enemies, self.towers, self.projectiles = 0.0, [], [], []
-        self.mode, self.shop_open, self.jukku_confirm_open, self.selected_tower_type, self.gif_frame_idx = target_state, False, False, "PRINCESS", 0
-        
-        # 현재 선택된 맵 경로 로드
-        if available_maps:
-            self.current_map_index = self.current_map_index % len(available_maps) # 인덱스 안전장치 추가
-            raw_path = available_maps[self.current_map_index]["path"]
-            self.enemy_path = [get_c(p[0], p[1]) for p in raw_path]
-        else:
-            self.enemy_path = []
-        
-        self.last_spawn_time, self.is_break_time = 0, True
-        if self.enemy_path:
-             self.nexus = Nexus(self.enemy_path[-1], building_image)
-        else:
-             self.nexus = None
-
-        self.shop_pos, self.is_dragging_shop, self.drag_offset = [(RESOLUTION[0] - 650) // 2, int(RESOLUTION[1] * 0.15)], False, [0, 0]
-        self.ending_sound_played, self.quit_confirm_open, self.sell_confirm_open, self.tower_to_sell, self.boss_spawn_count = False, False, False, None, 0
-        self.is_overtime, self.overtime_start_time, self.show_skip_button, self.enemies_to_spawn_this_round, self.enemies_spawned_this_round = False, 0, False, 0, 0
-
-    def start_online_game(self, map_idx, opponent_name="Unknown"):
-        self.reset(STATE_PLAYING)
-        self.is_online = True
-        self.current_map_index = map_idx
-        self.opponent_nickname = opponent_name
-        if available_maps:
-            raw_path = available_maps[self.current_map_index]["path"]
-            self.enemy_path = [get_c(p[0], p[1]) for p in raw_path]
-            if self.nexus:
-                self.nexus.rect = self.nexus.image.get_rect(center=self.enemy_path[-1])
-        # 치트 모드 재설정 (온라인이라 꺼짐)
-        self.gold = 300
-        
-    def sync_time(self, pkt):
-        # 서버로부터 시간 동기화
-        self.current_round = pkt.get("round", 1)
-        self.is_break_time = pkt.get("is_break", True)
-        self.time_left = pkt.get("time_left", 0)
-        # 라운드 변경 감지 시 BGM 변경 등 추가 로직 가능
-
-    def queue_spawn(self, mob_type):
-        self.spawn_queue.append(mob_type)
-
-    def update_opponent_hp(self, hp, max_hp):
-        self.opponent_hp = hp
-        self.opponent_max_hp = max_hp
-
-    def send_mob(self, mob_type):
-        cost = 0
-        if mob_type == "SMALL": cost = 200
-        elif mob_type == "LARGE": cost = 500
-        elif mob_type == "BOSS": cost = 2000
-        
-        if self.gold >= cost:
-            self.gold -= cost
-            self.chat.send_json({"type": "SPAWN", "mob": mob_type})
-            self.chat.add_message(f"[시스템] {mob_type} 공격을 보냈습니다!", CYAN)
-
-gm = GameManager()
+# GameManager 초기화 (PygameChatBox 사용)
+# PygameChatBox가 이 모듈의 NICKNAME을 참조할 수 있도록 getter 전달
+gm = GameManager(chat_class=lambda: PygameChatBox(nickname_getter=get_nickname))
 
 # --- 설정 관리 ---
-CONFIG_FILE = "launcher_config.json"
+CONFIG_FILE = "data/launcher_config.json"
 
 display_mode_setting = 0 # 0: 창모드, 1: 전체화면, 2: 전체화면(창)
 NATIVE_RESOLUTION = RESOLUTION # mte_config에서 가져온 초기(모니터) 해상도 저장
@@ -322,43 +51,7 @@ CHEAT_MODE = False # mte_config.CHEAT_MODE와 동기화 필요
 main_bg_image = None
 
 # --- 마리오카트 8 스타일 버튼 클래스 ---
-class MK8Button:
-    def __init__(self, x, y, w, h, text, color, text_color=WHITE):
-        self.rect = pygame.Rect(x, y, w, h)
-        self.text = text
-        self.base_color = color
-        self.text_color = text_color
-        self.skew = 30 # 기울기 정도
-        self.hover_scale = 1.05
-        
-    def draw(self, surface, mx, my):
-        is_hover = self.rect.collidepoint(mx, my)
-        
-        # 색상 및 크기 계산
-        color = (min(255, self.base_color[0]+40), min(255, self.base_color[1]+40), min(255, self.base_color[2]+40)) if is_hover else self.base_color
-        
-        # 평행사변형 좌표 계산 (오른쪽으로 기울어짐)
-        #  /  /
-        points = [
-            (self.rect.x + self.skew, self.rect.y),
-            (self.rect.x + self.rect.w + self.skew, self.rect.y),
-            (self.rect.x + self.rect.w, self.rect.y + self.rect.h),
-            (self.rect.x, self.rect.y + self.rect.h)
-        ]
-        
-        # 그림자 (약간 아래로)
-        shadow_points = [(p[0]+5, p[1]+5) for p in points]
-        pygame.draw.polygon(surface, (0,0,0,100), shadow_points)
-        
-        # 본체
-        pygame.draw.polygon(surface, color, points)
-        pygame.draw.polygon(surface, WHITE, points, 3) # 테두리
-        
-        # 텍스트 (기울기에 맞춰 중앙 정렬 보정)
-        txt_surf = get_text_surface(self.text, Fonts.BTN_LARGE, self.text_color)
-        center_x = self.rect.x + self.rect.w // 2 + self.skew // 2
-        center_y = self.rect.y + self.rect.h // 2
-        surface.blit(txt_surf, (center_x - txt_surf.get_width()//2, center_y - txt_surf.get_height()//2))
+# --- 마리오카트 8 스타일 버튼 클래스는 mte_shared에서 import 함 ---
 
 def init_ui():
     """현재 해상도(RESOLUTION)에 맞춰 UI 요소들의 위치를 초기화합니다."""
@@ -459,9 +152,14 @@ def _update_all_sizes(old_grid_size):
     # 게임 진행 중일 경우 엔티티 위치 및 크기 재조정
     if gm.mode == STATE_PLAYING and old_grid_size > 0:
         raw_path = available_maps[gm.current_map_index]["path"]
-        gm.enemy_path = [get_c(p[0], p[1]) for p in raw_path]
+        
+        gm.enemy_path = []
+        for i, p in enumerate(raw_path):
+            gx, gy = p[0], p[1]
+            props = p[2] if len(p) > 2 else {"speed": 1.0, "type": "NORMAL"}
+            gm.enemy_path.append({"pos": get_c(gx, gy), "props": props})
 
-        if gm.nexus: gm.nexus.image = building_image; gm.nexus.rect = gm.nexus.image.get_rect(center=gm.enemy_path[-1])
+        if gm.nexus: gm.nexus.image = building_image; gm.nexus.rect = gm.nexus.image.get_rect(center=gm.enemy_path[-1]["pos"])
 
         for t in gm.towers:
             gx, gy = round(t.rect.x / old_grid_size), round(t.rect.y / old_grid_size)
@@ -495,8 +193,11 @@ def update_display_mode():
         RESOLUTION = NATIVE_RESOLUTION
         flags |= pygame.FULLSCREEN
     
-    # 그리드 사이즈 및 전역 변수 업데이트 (해상도 너비 기준 24등분)
-    GRID_SIZE = max(1, int(RESOLUTION[0] / 24))
+    # 그리드 사이즈 및 전역 변수 업데이트 (가로 24칸, 세로 14칸 비율 유지)
+    grid_w = RESOLUTION[0] / 24
+    grid_h = RESOLUTION[1] / 14
+    GRID_SIZE = max(1, int(min(grid_w, grid_h)))
+    
     mte_config.GRID_SIZE = GRID_SIZE
     mte_object.GRID_SIZE = GRID_SIZE
 
@@ -506,28 +207,7 @@ def update_display_mode():
 projectile_images = {}
 
 # --- 유틸리티 함수 ---
-def draw_text_with_outline(surface, text, font, pos, text_color, outline_color):
-    # [성능 개선] 텍스트와 외곽선을 미리 합성한 후 캐시하여 매 프레임 반복 렌더링 방지
-    key = ("outline", text, font, text_color, outline_color)
-    if key not in TEXT_CACHE:
-        text_surf = get_text_surface(text, font, text_color)
-        outline_surf = get_text_surface(text, font, outline_color)
-        
-        w, h = text_surf.get_size()
-        # 외곽선 두께(1px)를 고려하여 2px 더 큰 서피스 생성
-        composite_surf = pygame.Surface((w + 2, h + 2), pygame.SRCALPHA)
-        
-        # 8방향으로 외곽선 blit
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx == 0 and dy == 0: continue
-                composite_surf.blit(outline_surf, (1 + dx, 1 + dy))
-        
-        # 중앙에 텍스트 blit
-        composite_surf.blit(text_surf, (1, 1))
-        TEXT_CACHE[key] = composite_surf
-
-    surface.blit(TEXT_CACHE[key], pos)
+# --- draw_text_with_outline은 mte_shared로 이동됨 ---
 
 # --- 리소스 로드 ---
 aigonan_sound, oh_sound, bbolong_sound = load_sound("sound/aigonan.mp3"), load_sound("sound/oh.mp3"), load_sound("sound/bbolong.mp3")
@@ -566,8 +246,12 @@ def play_round_music(round_num):
 def get_c(gx, gy): return (gx * GRID_SIZE + GRID_SIZE // 2, gy * GRID_SIZE + GRID_SIZE // 2)
 def is_on_path(pos, path, threshold=None):
     if threshold is None: threshold = GRID_SIZE * 0.6 # 그리드 크기에 비례하여 판정
-    for i in range(len(path)-1):
-        p1, p2, p3 = pygame.Vector2(path[i]), pygame.Vector2(path[i+1]), pygame.Vector2(pos); lp = p2-p1
+    
+    # path가 딕셔너리 리스트일 경우 좌표만 추출
+    points = [p["pos"] if isinstance(p, dict) else p for p in path]
+    
+    for i in range(len(points)-1):
+        p1, p2, p3 = pygame.Vector2(points[i]), pygame.Vector2(points[i+1]), pygame.Vector2(pos); lp = p2-p1
         if lp.length() == 0: continue
         t = max(0, min(1, (p3-p1).dot(lp)/lp.length_squared()))
         if p3.distance_to(p1 + t*lp) < threshold: return True
@@ -613,6 +297,9 @@ def load_maps():
     
     if not available_maps:
         available_maps.append({"name": "기본 맵", "path": [[1,13], [1,1], [3,1], [3,12], [5,12], [5,1], [22,1], [22,12], [7,12], [7,3], [20,3], [20,10], [9,10], [9,5], [18,5], [18,8], [11,8]]})
+
+# GameManager에 맵 리스트 전달
+gm.available_maps = available_maps
 
 # --- 입력 팝업 함수 ---
 def show_input_dialog(surface, prompt):
@@ -700,17 +387,21 @@ def load_game_config():
         except:
             pass
 
-    BGM_VOL = config["bgm_volume"]
-    SFX_VOL = config["sfx_volume"]
-    display_mode_setting = config["display_mode"]
-    CHEAT_MODE = config["cheat_mode"]
-    SERVER_IP = config["server_ip"]
-    SERVER_PORT = config["server_port"]
+    BGM_VOL = config.get("bgm_volume", 0.3)
+    SFX_VOL = config.get("sfx_volume", 0.5)
+    display_mode_setting = config.get("display_mode", 0)
+    CHEAT_MODE = config.get("cheat_mode", False)
+    SERVER_IP = config.get("server_ip", "127.0.0.1")
+    SERVER_PORT = config.get("server_port", 12345)
     NICKNAME = config.get("nickname", "Player")
     
     mte_config.CHEAT_MODE = CHEAT_MODE
     if pygame.mixer.get_init():
         pygame.mixer.music.set_volume(BGM_VOL)
+
+    # GameManager에 네트워크 정보 및 닉네임 설정
+    if gm.chat:
+        gm.chat.set_network_info(SERVER_IP, SERVER_PORT)
 
 def save_game_config():
     """현재 게임 설정을 JSON 파일에 저장합니다."""
@@ -742,7 +433,7 @@ def save_game_config():
 def main(skip_intro=False):
     global running, clock
     global BGM_VOL, SFX_VOL, display_mode_setting, RESOLUTION, background_image, aigonan_gif_frames, display_surface, GRID_SIZE
-    global SERVER_IP, SERVER_PORT, NICKNAME
+    global SERVER_IP, SERVER_PORT, NICKNAME, CHEAT_MODE
 
     # Pygame 및 믹서 재초기화 (런처 종료 후 안전한 상태 확보)
     if not pygame.get_init():
@@ -796,10 +487,14 @@ def main(skip_intro=False):
                     RESOLUTION = (event.w, event.h)
                     display_surface = pygame.display.set_mode(RESOLUTION, pygame.DOUBLEBUF | pygame.RESIZABLE)
 
-                    GRID_SIZE = max(1, int(RESOLUTION[0] / 24))
+                    # 동적 그리드 스케일링 (가로 24, 세로 14 비율 맞춤)
+                    grid_w = RESOLUTION[0] / 24
+                    grid_h = RESOLUTION[1] / 14
+                    GRID_SIZE = max(1, int(min(grid_w, grid_h)))
+                    
                     mte_config.GRID_SIZE = GRID_SIZE
                     mte_object.GRID_SIZE = GRID_SIZE
-
+                    
                     _update_all_sizes(old_grid_size)
 
             if CHEAT_MODE and event.type == pygame.KEYDOWN:
@@ -877,12 +572,26 @@ def main(skip_intro=False):
                         gm.chat.disconnect()
                     elif mk8_online_btn.rect.collidepoint(mx, my):
                         # 온라인 모드 실행 (모듈 함수 호출)
-                        online_client.run_online()
+                        should_exit = online_client.run_online(auto_start=True)
+                        if should_exit:
+                            running = False
+                            break
                         
                         # 온라인 모드 종료 후 복귀 처리
                         update_display_mode() # 화면 모드 재설정
                         gm.mode = STATE_MAIN_MENU
                         pygame.mixer.stop(); pygame.mixer.music.stop() # 온라인 소리 정지
+                    elif mk8_settings_btn.rect.collidepoint(mx, my):
+                        gm.state_before_settings = STATE_MAIN_MENU
+                        gm.mode = STATE_SETTINGS
+                        gm.initial_settings = {
+                            "bgm_volume": BGM_VOL,
+                            "sfx_volume": SFX_VOL,
+                            "display_mode": display_mode_setting,
+                            "server_ip": SERVER_IP,
+                            "server_port": SERVER_PORT,
+                            "nickname": NICKNAME
+                        }
                     elif mk8_quit_btn.rect.collidepoint(mx, my):
                         gm.quit_confirm_open = True
                         
@@ -974,14 +683,21 @@ def main(skip_intro=False):
                     elif settings_ip_btn.rect.collidepoint(mx, my):
                         new_ip = show_text_input_dialog(display_surface, "서버 IP 주소 입력", SERVER_IP)
                         if new_ip is not None: SERVER_IP = new_ip
+                        if gm.chat: gm.chat.set_network_info(SERVER_IP, SERVER_PORT)
                     elif settings_port_btn.rect.collidepoint(mx, my):
                         new_port = show_text_input_dialog(display_surface, "서버 포트 입력", str(SERVER_PORT))
                         if new_port is not None and new_port.isdigit(): SERVER_PORT = int(new_port)
+                        if gm.chat: gm.chat.set_network_info(SERVER_IP, SERVER_PORT)
                     elif settings_nickname_btn.rect.collidepoint(mx, my):
                         new_nick = show_text_input_dialog(display_surface, "닉네임 입력", NICKNAME)
                         if new_nick is not None: NICKNAME = new_nick
                     elif settings_jukku_btn.rect.collidepoint(mx, my): gm.jukku_confirm_open = True
                     elif settings_quit_btn.rect.collidepoint(mx, my): gm.mode = STATE_MAIN_MENU
+                    
+                    # 치트 버튼 이벤트 (온라인이 아닐 때만)
+                    elif not gm.is_online and settings_cheat_btn.rect.collidepoint(mx, my):
+                        CHEAT_MODE = not CHEAT_MODE; mte_config.CHEAT_MODE = CHEAT_MODE
+                        gm.save_confirm_open = True
 
             if event.type == pygame.MOUSEBUTTONUP: gm.is_dragging_shop = False
             if event.type == pygame.MOUSEMOTION:
@@ -1009,7 +725,7 @@ def main(skip_intro=False):
                     if not gm.is_online:
                         gm.time_left = max(0, 15 - c_time)
                         if gm.time_left <= 0: 
-                            gm.is_break_time, gm.round_start_time, gm.last_spawn_time, gm.boss_spawn_count, gm.show_skip_button = False, gm.virtual_elapsed_time, gm.virtual_elapsed_time, 0, False
+                            gm.is_break_time, gm.round_start_time, gm.last_spawn_time, gm.boss_spawn_count, gm.show_skip_button, gm.enemies_spawned_this_round = False, gm.virtual_elapsed_time, gm.virtual_elapsed_time, 0, False, 0
                             if gm.current_round > 1: gm.round_gold_value = int(gm.round_gold_value * 1.5) # [복리] 라운드 시작 시 가치 상승
                     
                     # 공통 로직 (몬스터 스폰 수 계산 등)
@@ -1154,7 +870,11 @@ def main(skip_intro=False):
             quit_btn.draw(display_surface)
 
         elif gm.mode == STATE_PLAYING:
-            pygame.draw.lines(display_surface, PATH_COLOR, False, gm.enemy_path, 50)
+            # 경로 그리기 (딕셔너리 구조 대응)
+            path_points = [p["pos"] for p in gm.enemy_path]
+            if len(path_points) > 1:
+                pygame.draw.lines(display_surface, PATH_COLOR, False, path_points, 50)
+            
             if gm.shop_open and not (shop_rect.collidepoint(mx, my)) and gm.current_round <= 40:
                 ps = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA); pygame.draw.rect(ps, (0,255,0,100) if can_place else (255,0,0,100), (0,0,GRID_SIZE,GRID_SIZE)); display_surface.blit(ps, (gmx, gmy))
                 rv = TOWER_DATA[gm.selected_tower_type]["range"] + (gm.range_level - 1) * 20; rs = pygame.Surface((rv*2, rv*2), pygame.SRCALPHA); pygame.draw.circle(rs, (255,255,255,60), (rv,rv), rv); display_surface.blit(rs, (gmx+GRID_SIZE//2-rv, gmy+GRID_SIZE//2-rv))
@@ -1252,10 +972,6 @@ def main(skip_intro=False):
                 settings_cheat_btn.rect.centerx = s_w//2 + int(100*s) # 위치 조정
                 settings_cheat_btn.rect.y = s_h * 0.68
                 settings_cheat_btn.draw(display_surface)
-                if settings_cheat_btn.rect.collidepoint(mx, my) and event.type == pygame.MOUSEBUTTONDOWN and event.button==1:
-                    CHEAT_MODE = not CHEAT_MODE; mte_config.CHEAT_MODE = CHEAT_MODE
-                    # 바로 적용 (골드 등) - 사용자가 원할 경우
-                    gm.save_confirm_open = True # 설정 변경으로 간주
 
             settings_jukku_btn.draw(display_surface); settings_quit_btn.draw(display_surface)
             settings_back_btn.draw(display_surface)
@@ -1267,7 +983,7 @@ def main(skip_intro=False):
                 display_surface.blit(save_surf, pos)
         
         # --- 전역 UI 및 팝업 그리기 (항상 위에 표시) ---
-        if gm.mode != STATE_SETTINGS:
+        if gm.mode not in [STATE_SETTINGS, STATE_MAIN_MENU, STATE_INTRO]:
             open_settings_btn.draw(display_surface)
         if gm.save_confirm_open:
             sc_w, sc_h = 600, 250
@@ -1299,4 +1015,9 @@ def main(skip_intro=False):
     pygame.quit(); sys.exit()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        with open("error_log.txt", "w") as f:
+            f.write(traceback.format_exc())
+        traceback.print_exc()

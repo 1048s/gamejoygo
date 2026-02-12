@@ -5,8 +5,7 @@ import os
 
 # --- 설정 --- 2026-02-09
 # 게임 내 설정과 맞춤 (mte_config.py 참고)
-# 에디터 화면에 다 들어오도록 시각적 크기는 절반(40)으로 줄이고, 논리적 좌표는 그대로 사용
-VISUAL_GRID_SIZE = 40 
+# 논리적 좌표는 그대로 사용, 시각적 크기는 동적으로 계산
 GAME_GRID_COLS = 24  # 1920 / 80
 GAME_GRID_ROWS = 14  # 1080 / 80
 
@@ -85,6 +84,8 @@ class MapEditor:
         self.redo_stack = [] # Redo를 위한 스택
         self.map_name = "새로운 맵"
         
+        self.cell_size = 40 # 기본 셀 크기 (동적으로 변경됨)
+
         # 폰트 설정
         self.title_font = font.Font(family="Malgun Gothic", size=16, weight="bold")
         self.label_font = font.Font(family="Malgun Gothic", size=10)
@@ -129,32 +130,75 @@ class MapEditor:
         
         # 캔버스 테두리 효과를 위한 프레임
         canvas_border = tk.Frame(self.content_area, bg=COLOR_ACCENT_CYAN, padx=1, pady=1)
-        canvas_border.pack()
+        canvas_border.pack(fill=tk.BOTH, expand=True) # 채우기
 
-        canvas_w = GAME_GRID_COLS * VISUAL_GRID_SIZE
-        canvas_h = GAME_GRID_ROWS * VISUAL_GRID_SIZE
-        self.canvas = tk.Canvas(canvas_border, width=canvas_w, height=canvas_h, bg=COLOR_BG_CANVAS, highlightthickness=0)
-        self.canvas.pack()
+        # 캔버스 생성 (초기 크기는 임의 지정, 나중에 resize 이벤트로 조정됨)
+        self.canvas = tk.Canvas(canvas_border, bg=COLOR_BG_CANVAS, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
         
         # 이벤트 바인딩
+        self.canvas.bind("<Configure>", self.on_resize)
         self.canvas.bind("<Button-1>", self.on_left_click)
+        self.canvas.bind("<ButtonRelease-1>", self.on_left_release) # 드래그 등 방지용, 혹은 확장을 위해
         self.canvas.bind("<Button-3>", self.on_right_click)
         
         self.draw_grid()
 
+        # 3. 속성 편집 패널 (사이드바 하단에 추가)
+        # 평소엔 숨겨져 있다가 노드 선택 시 표시
+        self.props_frame = tk.Frame(self.sidebar, bg=COLOR_BG_SIDEBAR)
+        self.props_frame.pack(fill=tk.X, pady=20)
+        
+        tk.Frame(self.props_frame, height=1, bg="#444444").pack(fill=tk.X, pady=(0, 10))
+        tk.Label(self.props_frame, text="NODE PROPERTIES", font=self.label_font, bg=COLOR_BG_SIDEBAR, fg=COLOR_ACCENT_CYAN).pack(anchor="w", pady=(0, 5))
+        
+        # 속도 입력
+        tk.Label(self.props_frame, text="Speed Multiplier:", font=("Malgun Gothic", 9), bg=COLOR_BG_SIDEBAR, fg=COLOR_TEXT_SUB).pack(anchor="w")
+        self.speed_entry = ModernEntry(self.props_frame)
+        self.speed_entry.pack(fill=tk.X, pady=(0, 10))
+        
+        # 타입 선택 (Radio Button 스타일 대신 버튼으로 구현하거나 콤보박스 사용)
+        # 여기서는 간단히 텍스트 입력으로 처리하거나 토글 버튼 사용
+        
+        # 적용 버튼
+        ModernButton(self.props_frame, "APPLY", self.apply_props, width=180, bg_color="#004444", hover_color="#006666", text_color="#00FFFF").pack(pady=5)
+
+        self.props_frame.pack_forget() # 초기엔 숨김
+        self.selected_node_index = -1
+
+    def on_resize(self, event):
+        """창 크기 변경 시 호출"""
+        w = event.width
+        h = event.height
+        
+        if w < 10 or h < 10: return
+
+        # 그리드 셀 크기 재계산 (화면에 꽉 차게)
+        # 가로, 세로 비율 중 더 타이트한 쪽을 기준으로 맞춤 (비율 유지)
+        cell_w = w / GAME_GRID_COLS
+        cell_h = h / GAME_GRID_ROWS
+        
+        self.cell_size = min(cell_w, cell_h)
+        
+        self.draw_grid()
+        self.draw_path()
+
     def draw_grid(self):
         """격자 무늬 그리기 (다크 테마)"""
-        w = int(self.canvas['width'])
-        h = int(self.canvas['height'])
-        
         self.canvas.delete("grid_line")
         
+        w = GAME_GRID_COLS * self.cell_size
+        h = GAME_GRID_ROWS * self.cell_size
+        
         # 수직선
-        for x in range(0, w, VISUAL_GRID_SIZE):
-            self.canvas.create_line(x, 0, x, h, fill=COLOR_GRID_LINE, tags="grid_line")
+        for x in range(GAME_GRID_COLS + 1):
+            px = x * self.cell_size
+            self.canvas.create_line(px, 0, px, h, fill=COLOR_GRID_LINE, tags="grid_line")
+            
         # 수평선
-        for y in range(0, h, VISUAL_GRID_SIZE):
-            self.canvas.create_line(0, y, w, y, fill=COLOR_GRID_LINE, tags="grid_line")
+        for y in range(GAME_GRID_ROWS + 1):
+            py = y * self.cell_size
+            self.canvas.create_line(0, py, w, py, fill=COLOR_GRID_LINE, tags="grid_line")
 
     def draw_path(self):
         """현재 경로 그리기 (네온 스타일)"""
@@ -167,11 +211,10 @@ class MapEditor:
         if len(self.path) > 1:
             points = []
             for p in self.path:
-                cx = p[0] * VISUAL_GRID_SIZE + VISUAL_GRID_SIZE // 2
-                cy = p[1] * VISUAL_GRID_SIZE + VISUAL_GRID_SIZE // 2
+                cx = p[0] * self.cell_size + self.cell_size // 2
+                cy = p[1] * self.cell_size + self.cell_size // 2
                 points.extend([cx, cy])
             
-            # 발광 효과 (두껍고 반투명한 선을 아래에 깔기) - tkinter canvas는 알파 지원이 제한적이니 두꺼운 어두운 색으로 대체하거나 생략
             # 메인 선
             self.canvas.create_line(points, fill=COLOR_ACCENT_CYAN, width=4, capstyle=tk.ROUND, joinstyle=tk.ROUND, tags="path_element")
             # 화살표 (마지막 두 점만 사용)
@@ -180,14 +223,26 @@ class MapEditor:
 
         # 2. 노드(점) 그리기
         for i, p in enumerate(self.path):
-            cx = p[0] * VISUAL_GRID_SIZE + VISUAL_GRID_SIZE // 2
-            cy = p[1] * VISUAL_GRID_SIZE + VISUAL_GRID_SIZE // 2
-            r = 8
+            cx = p[0] * self.cell_size + self.cell_size // 2
+            cy = p[1] * self.cell_size + self.cell_size // 2
+            r = self.cell_size * 0.25 # 약간 키움
+            
+            # 속성 읽기 (하위 호환성)
+            props = p[2] if len(p) > 2 else {"speed": 1.0, "type": "NORMAL"}
             
             fill_color = COLOR_BG_CANVAS
             outline_color = COLOR_ACCENT_CYAN
             text_color = COLOR_TEXT_MAIN
+            width = 2
             
+            # 속성에 따른 시각화
+            if props.get("speed", 1.0) > 1.0: # 가속
+                outline_color = "#FFFF00" # 노랑
+                text_color = "#FFFF00"
+            elif props.get("speed", 1.0) < 1.0: # 감속
+                outline_color = "#0088FF" # 파랑
+                text_color = "#0088FF"
+                
             if i == 0: # 시작점
                 outline_color = "#00FF00" 
                 fill_color = "#003300"
@@ -195,27 +250,92 @@ class MapEditor:
                 outline_color = "#FF3333"
                 fill_color = "#330000"
             
-            # 노드 원
-            self.canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=fill_color, outline=outline_color, width=2, tags="path_element")
+            # 선택된 노드 하이라이트
+            if hasattr(self, 'selected_node_index') and self.selected_node_index == i:
+                fill_color = "#FFFFFF"
+                width = 4
+                r *= 1.2
             
-            # 인덱스 텍스트 (원래 위치: 노드 위쪽)
-            self.canvas.create_text(cx, cy-15, text=str(i), fill=COLOR_TEXT_MAIN, font=("Arial", 8), tags="path_element")
+            # 노드 원
+            self.canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=fill_color, outline=outline_color, width=width, tags="path_element")
+            
+            # 정보 표시 (속성 등)
+            info_txt = str(i)
+            if props.get("speed", 1.0) != 1.0:
+                info_txt += f"\n(x{props['speed']})"
+                
+            font_size = int(max(8, self.cell_size * 0.25))
+            self.canvas.create_text(cx, cy - r - 10, text=info_txt, fill=text_color, font=("Arial", font_size), tags="path_element", justify=tk.CENTER)
             
             if i == 0: 
-               self.canvas.create_text(cx, cy, text="S", fill=outline_color, font=("Arial", 8, "bold"), tags="path_element")
+               self.canvas.create_text(cx, cy, text="S", fill=outline_color, font=("Arial", font_size, "bold"), tags="path_element")
             elif i == len(self.path) - 1:
-               self.canvas.create_text(cx, cy, text="E", fill=outline_color, font=("Arial", 8, "bold"), tags="path_element")
+               self.canvas.create_text(cx, cy, text="E", fill=outline_color, font=("Arial", font_size, "bold"), tags="path_element")
 
     def on_left_click(self, event):
-        """경로 추가"""
-        gx = event.x // VISUAL_GRID_SIZE
-        gy = event.y // VISUAL_GRID_SIZE
+        """경로 추가 또는 노드 선택"""
+        if self.cell_size <= 0: return
+        gx = int(event.x // self.cell_size)
+        gy = int(event.y // self.cell_size)
         
         # 범위 체크
         if 0 <= gx < GAME_GRID_COLS and 0 <= gy < GAME_GRID_ROWS:
-            self.path.append([gx, gy])
+            # 기존 노드 선택 확인 (노드 위에 클릭했는지)
+            for i, p in enumerate(self.path):
+                if p[0] == gx and p[1] == gy:
+                    self.select_node(i)
+                    return
+
+            # 새 노드 추가 (속성 포함: [x, y, props])
+            default_props = {"speed": 1.0, "type": "NORMAL"}
+            self.path.append([gx, gy, default_props])
             self.redo_stack.clear() # 새로운 행동 시 레드 스택 초기화
+            self.select_node(len(self.path) - 1) # 방금 추가한 노드 선택
             self.draw_path()
+
+    def select_node(self, index):
+        """노드 선택 및 속성 표시"""
+        self.selected_node_index = index
+        self.update_sidebar_props()
+        self.draw_path()
+
+    def update_sidebar_props(self):
+        """사이드바에 현재 선택된 노드의 속성 표시"""
+        if 0 <= self.selected_node_index < len(self.path):
+            p = self.path[self.selected_node_index]
+            props = p[2] if len(p) > 2 else {"speed": 1.0, "type": "NORMAL"}
+            
+            self.props_frame.pack(fill=tk.X, pady=20) # 패널 보이기
+            
+            self.speed_entry.delete(0, tk.END)
+            self.speed_entry.insert(0, str(props.get("speed", 1.0)))
+        else:
+            self.props_frame.pack_forget()
+
+    def apply_props(self):
+        """입력된 속성을 선택된 노드에 적용"""
+        if 0 <= self.selected_node_index < len(self.path):
+            try:
+                speed = float(self.speed_entry.get())
+                # 값 검증
+                speed = max(0.1, min(speed, 5.0)) # 0.1 ~ 5.0 배속 제한
+                
+                p = self.path[self.selected_node_index]
+                
+                # 기존 속성 가져오기 (없으면 생성)
+                if len(p) < 3: p.append({})
+                
+                p[2]["speed"] = speed
+                # p[2]["type"] = ... (추후 확장)
+                
+                self.draw_path() # 다시 그리기 (색상 등 업데이트)
+                messagebox.showinfo("알림", "속성이 적용되었습니다.")
+                
+            except ValueError:
+                messagebox.showerror("오류", "유효한 숫자를 입력하세요.")
+
+    def on_left_release(self, event):
+        pass
 
     def on_right_click(self, event):
         self.on_undo()
@@ -225,6 +345,10 @@ class MapEditor:
         if self.path:
             pos = self.path.pop()
             self.redo_stack.append(pos)
+            self.selected_node_index = len(self.path) - 1 # 이전 노드 선택
+            if self.selected_node_index < 0:
+                self.selected_node_index = -1
+            self.update_sidebar_props()
             self.draw_path()
 
     def on_redo(self):
@@ -232,6 +356,7 @@ class MapEditor:
         if self.redo_stack:
             pos = self.redo_stack.pop()
             self.path.append(pos)
+            self.select_node(len(self.path) - 1)
             self.draw_path()
 
     def clear_map(self):
@@ -300,9 +425,10 @@ class MapEditor:
 
 def main():
     root = tk.Tk()
-    # 윈도우 크기 자동 계산 (사이드바 220 + 캔버스 너비 + 여백)
-    window_w = 220 + (GAME_GRID_COLS * VISUAL_GRID_SIZE) + 60
-    window_h = (GAME_GRID_ROWS * VISUAL_GRID_SIZE) + 60
+    # 초기 윈도우 크기 (약간 넉넉하게)
+    initial_cell_size = 40
+    window_w = 220 + (GAME_GRID_COLS * initial_cell_size) + 40
+    window_h = (GAME_GRID_ROWS * initial_cell_size) + 40
     
     # 화면 중앙 배치
     screen_w = root.winfo_screenwidth()
@@ -311,7 +437,8 @@ def main():
     y = (screen_h - window_h) // 2
     
     root.geometry(f"{window_w}x{window_h}+{x}+{y}")
-    root.resizable(False, False)
+    root.resizable(True, True) # 창 크기 조절 가능하게 변경
+    root.minsize(800, 600) # 최소 크기 지정
     
     app = MapEditor(root)
     try:

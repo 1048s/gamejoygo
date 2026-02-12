@@ -1,6 +1,6 @@
 import pygame
 import random
-from mte_config import *
+from .mte_config import *
 
 class Button:
     def __init__(self, x, y, w, h, text, color, val=None):
@@ -30,21 +30,37 @@ class Enemy:
         scale = GRID_SIZE / 80.0
         w, h = (100, 100) if is_boss else (70, 70)
         size = (int(w * scale), int(h * scale))
-        self.image = load_smart_image(self.image_path, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = path[0]
-        self.pos = pygame.Vector2(path[0])
-        self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.speed = 0.5 if is_boss else 1
+        
+        # path가 이제 [{'pos': (x,y), 'props': {...}}, ...] 형태임
+        start_pos = path[0]["pos"]
+        self.image = load_smart_image(self.image_path, size); self.rect = pygame.Rect(0, 0, size[0], size[1]); self.rect.center = start_pos
+        self.pos = pygame.Vector2(start_pos)
+        self.max_hp = (3000 if is_boss else 100) * (1.3**(round_num-1)); self.hp = self.max_hp; self.base_speed = 0.5 if is_boss else 1
+        
     def move(self, dt, speed_mult):
-        move_step = self.speed * speed_mult * (dt * 144)
+        move_step = self.base_speed * speed_mult * (dt * 144)
+        
         while move_step > 0 and self.target_idx < len(self.path):
-            target = pygame.Vector2(self.path[self.target_idx])
+            # 현재 구간의 속도 배율 적용 (이전 노드의 속성을 따름)
+            current_segment_idx = max(0, self.target_idx - 1)
+            segment_props = self.path[current_segment_idx]["props"]
+            segment_speed_mult = segment_props.get("speed", 1.0)
+            
+            step_with_props = move_step * segment_speed_mult
+
+            target = pygame.Vector2(self.path[self.target_idx]["pos"])
             dir_vec = target - self.pos
             dist = dir_vec.length()
-            if dist <= move_step:
+            
+            if dist <= step_with_props:
                 self.pos = target
+                # 남은 이동 거리 환산 (반대 연산)
+                remaining_dist = step_with_props - dist
+                move_step = remaining_dist / segment_speed_mult if segment_speed_mult > 0 else 0
+                
                 self.target_idx += 1
-                move_step -= dist
             else:
-                if dist > 0: self.pos += dir_vec.normalize() * move_step
+                if dist > 0: self.pos += dir_vec.normalize() * step_with_props
                 move_step = 0
         self.rect.center = (int(self.pos.x), int(self.pos.y))
     def draw(self, surface):

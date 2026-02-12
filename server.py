@@ -5,10 +5,16 @@ import random
 import time
 import os
 import msvcrt
+import math
 
 # --- 서버 설정 ---
 HOST = '0.0.0.0'
-PORT = int(input("서버 포트를! 조일 번호 : "))
+import sys
+if len(sys.argv) > 1:
+    PORT = int(sys.argv[1])
+else:
+    PORT = 12345
+# PORT = int(input("서버 포트를! 조일 번호 : "))
 
 clients = []        # 접속한 모든 클라이언트
 waiting_queue = []  # 매칭 대기 중인 클라이언트
@@ -226,7 +232,7 @@ def start_server():
         print(f"[!] 서버 실행 실패: {e}")
     finally:
         server.close()
-        os.exit(0)
+        os._exit(0)
 
 if __name__ == "__main__":
     start_server()

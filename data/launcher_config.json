@@ -6,7 +6,7 @@
     "bgm_volume": 0.0,
     "sfx_volume": 0.0,
     "display_mode": 0,
-    "server_ip": "127.0.0.1",
-    "server_port": 12345,
-    "nickname": "sexyguy"
+    "server_ip": "[IP_ADDRESS]",
+    "server_port": 20318,
+    "nickname": "trick_call"
 }

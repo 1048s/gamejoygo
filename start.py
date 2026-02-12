@@ -8,7 +8,7 @@ import json
 import threading
 import os
 import map_editor
-import version
+from data import version
 
 class ModernButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=50, 
@@ -76,7 +76,7 @@ class ModernButton(tk.Canvas):
 class LauncherApp:
     def __init__(self, root):
         self.root = root
-        self.config_file = "launcher_config.json"
+        self.config_file = "data/launcher_config.json"
         self.load_config()
         self.should_launch_game = False
 

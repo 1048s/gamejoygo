@@ -16,15 +16,28 @@ pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
 
 # --- 리소스 경로 처리 ---
 def resource_path(relative_path):
-    # 1. 로컬 파일 우선 확인 (모딩 및 개발 편의성)
+    # 1. 로컬 파일 우선 확인
     if os.path.exists(relative_path):
         return os.path.abspath(relative_path)
-    # 2. PyInstaller 임시 폴더 확인
+    
+    # 2. data 폴더 내부 확인 (이미지, 사운드 등)
+    data_path = os.path.join("data", relative_path)
+    if os.path.exists(data_path):
+        return os.path.abspath(data_path)
+
+    # 3. PyInstaller 임시 폴더 확인
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # modules 폴더 상위(루트) 기준
+    
+    # 번들 상태에서 data 폴더 내부도 시도
+    p = os.path.join(base_path, relative_path)
+    if os.path.exists(p): return p
+    p_data = os.path.join(base_path, "data", relative_path)
+    if os.path.exists(p_data): return p_data
+    
+    return p
 
 # --- 설정 및 전역 변수 ---
 infoObject = pygame.display.Info()
