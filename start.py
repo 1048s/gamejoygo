@@ -8,7 +8,12 @@ import json
 import threading
 import os
 import map_editor
+import hashlib
+import hashlib
+from tkinter import simpledialog, filedialog, scrolledtext
 from data import version
+import sys
+# 빌드 모듈은 필요할 때 임포트하거나 subprocess로 실행
 
 class ModernButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=50, 
@@ -162,9 +167,22 @@ class LauncherApp:
         self.btn_update = create_btn("업데이트 확인", self.check_update)
         self.btn_exit = create_btn("종료", root.quit)
 
+        # 관리자 기능 (이스터에그): 설정 버튼 위에서 숫자 6 누르기
+        self.is_settings_hover = False
+        self.btn_settings.bind("<Enter>", lambda e: self._on_settings_hover(True), add="+")
+        self.btn_settings.bind("<Leave>", lambda e: self._on_settings_hover(False), add="+")
+        self.root.bind("<Key>", self._on_key_press)
+
         # 하단 버전 정보
         version_label = tk.Label(root, text=f"{version.VERSION} | GameJoyGo", bg="#121212", fg="#333333", font=("Arial", 9))
         version_label.place(relx=0.98, rely=0.98, anchor="se")
+
+    def _on_settings_hover(self, is_hover):
+        self.is_settings_hover = is_hover
+
+    def _on_key_press(self, event):
+        if self.is_settings_hover and event.char == '6':
+            self.open_admin_window()
 
     def load_notices(self):
         def fetch():
@@ -330,6 +348,148 @@ class LauncherApp:
     def start_game(self):
         self.should_launch_game = True
         self.root.destroy()
+
+    # ... (inside LauncherApp class methods)
+    def open_admin_window(self):
+        """관리자 탭(창)을 엽니다. (비밀번호 기능 구현됨)"""
+        # 비밀번호 입력 받기
+        password = simpledialog.askstring("관리자 인증", "관리자 비밀번호를 입력하세요:", parent=self.root, show="*")
+        
+        if not password:
+            return
+
+        # 1. 패스워드 검증 (data/admin_hash.txt)
+        target_pw = ""
+        try:
+            with open("data/admin_hash.txt", "r") as f:
+                target_pw = f.read().strip().upper()
+        except: pass
+        
+        if not target_pw: target_pw = "7FC74A463D290D5B0085818FC9041B6C" # 기본값
+
+        if hashlib.md5(password.encode()).hexdigest().upper() != target_pw:
+            messagebox.showerror("인증 실패", "비밀번호가 올바르지 않습니다.", parent=self.root)
+            return
+
+        # 1차 인증 성공 알림 및 파일 선택 유도
+        if not messagebox.askokcancel("2차 인증", "1차 인증에 성공했습니다.\n확인을 누르면 보안 키 파일(.key 등)을 선택하는 창이 열립니다.\n올바른 키 파일을 선택해주세요.", parent=self.root):
+            return
+
+        # 2차 인증: 키 파일 선택 (파일 업로드 창)
+        target_key_hash = "76deb49cc2a877d33c64a76b4f11989a"
+        
+        key_file_path = filedialog.askopenfilename(
+            title="보안 키 파일 선택",
+            initialdir=os.getcwd(),
+            filetypes=[("All Files", "*.*"), ("Key Files", "*.key")]
+        )
+
+        if not key_file_path: # 취소함
+            return
+
+        try:
+            with open(key_file_path, "rb") as f:
+                file_hash = hashlib.md5(f.read()).hexdigest()
+            
+            if file_hash != target_key_hash:
+                messagebox.showerror("인증 실패", f"선택한 키 파일이 유효하지 않습니다.\n(Hash Mismatch)", parent=self.root)
+                return
+        except Exception as e:
+            messagebox.showerror("오류", f"파일을 읽는 중 오류가 발생했습니다: {e}", parent=self.root)
+            return
+
+        # 인증 성공
+        self._show_admin_panel()
+
+    def _show_admin_panel(self):
+        """실제 관리자 패널을 표시합니다."""
+        admin_win = tk.Toplevel(self.root)
+        admin_win.title("관리자 대시보드")
+        admin_win.geometry("800x600")
+        admin_win.configure(bg="#1E1E1E")
+        
+        # 스타일
+        title_font = ("Malgun Gothic", 20, "bold")
+        header_font = ("Malgun Gothic", 12, "bold")
+        btn_font = ("Malgun Gothic", 10)
+        log_font = ("Consolas", 9)
+        
+        # 1. 헤더
+        tk.Label(admin_win, text="관리자 대시보드", font=title_font, bg="#1E1E1E", fg="#FF3333").pack(pady=20)
+        
+        # 2. 버튼 컨트롤 패널
+        control_frame = tk.Frame(admin_win, bg="#1E1E1E")
+        control_frame.pack(fill="x", padx=20, pady=10)
+        
+        def run_build():
+            if not messagebox.askyesno("빌드", "게임을 빌드하시겠습니까?\n시간이 다소 소요될 수 있습니다."): return
+            self._log_to_admin(log_text, "=== 빌드 시작 ===")
+            
+            def build_thread():
+                try:
+                    # sys.stdout을 캡처하여 로그창에 출력하고 싶지만 복잡하므로 subprocess로 실행
+                    p = subprocess.Popen([sys.executable, "data/build.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=os.getcwd())
+                    
+                    while True:
+                        line = p.stdout.readline()
+                        if not line and p.poll() is not None: break
+                        if line: self._log_to_admin(log_text, line.strip())
+                    
+                    if p.returncode == 0:
+                        self._log_to_admin(log_text, "=== 빌드 성공 ===")
+                        messagebox.showinfo("완료", "빌드가 완료되었습니다.", parent=admin_win)
+                    else:
+                        err = p.stderr.read()
+                        self._log_to_admin(log_text, f"=== 빌드 실패 ===\n{err}")
+                        messagebox.showerror("실패", "빌드 중 오류가 발생했습니다.", parent=admin_win)
+                except Exception as e:
+                    self._log_to_admin(log_text, f"Error: {e}")
+
+            threading.Thread(target=build_thread, daemon=True).start()
+
+        def run_release():
+            # create_release.py 실행
+            try:
+                subprocess.Popen([sys.executable, "data/create_release.py"], cwd=os.getcwd())
+                self._log_to_admin(log_text, "릴리스 매니저 실행됨.")
+            except Exception as e:
+                self._log_to_admin(log_text, f"릴리스 매니저 실행 실패: {e}")
+
+        def view_error_log():
+            log_path = "error_log.txt"
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self._log_to_admin(log_text, f"--- {log_path} ---\n{content}\n----------------")
+            else:
+                self._log_to_admin(log_text, "error_log.txt 파일이 없습니다.")
+
+        ModernButton(control_frame, text="게임 빌드 (Build)", command=run_build, width=200, height=50, bg_color="#0066CC").pack(side="left", padx=10)
+        ModernButton(control_frame, text="릴리스 생성 (Release)", command=run_release, width=200, height=50, bg_color="#009900").pack(side="left", padx=10)
+        ModernButton(control_frame, text="에러 로그 확인", command=view_error_log, width=200, height=50, bg_color="#CC6600").pack(side="left", padx=10)
+        
+        # 3. 로그 뷰어
+        tk.Label(admin_win, text="실행 로그", font=header_font, bg="#1E1E1E", fg="#CCCCCC").pack(anchor="w", padx=20, pady=(20, 5))
+        
+        log_frame = tk.Frame(admin_win, bg="#1E1E1E")
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        log_text = scrolledtext.ScrolledText(log_frame, font=log_font, bg="#101010", fg="#00FF00", state="disabled")
+        log_text.pack(fill="both", expand=True)
+        
+        # 닫기 버튼
+        ModernButton(admin_win, text="닫기", command=admin_win.destroy, width=150, height=40, bg_color="#333333").pack(side="bottom", pady=10)
+
+        self._log_to_admin(log_text, "관리자 패널이 준비되었습니다.")
+
+    def _log_to_admin(self, widget, message):
+        """로그 창에 메시지를 추가합니다. (Thread-safe)"""
+        def _update():
+            widget.config(state="normal")
+            widget.insert("end", f"{message}\n")
+            widget.see("end")
+            widget.config(state="disabled")
+        self.root.after(0, _update)
 
     def open_editor(self):
         if getattr(sys, 'frozen', False):

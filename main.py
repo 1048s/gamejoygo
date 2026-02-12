@@ -60,7 +60,6 @@ def init_ui():
     global open_shop_btn, open_settings_btn, speed_btn, quit_btn, retry_btn, next_round_btn
     global settings_back_btn, settings_save_btn, bgm_vol_down_btn, bgm_vol_up_btn, sfx_vol_down_btn, sfx_vol_up_btn
     global display_mode_window_btn, display_mode_fullscreen_btn, settings_jukku_btn, settings_quit_btn, settings_ip_btn, settings_port_btn, settings_nickname_btn
-    global settings_cheat_btn
 
     s = RESOLUTION[1] / 1080.0 # UI 크기 비율
     s_w, s_h = RESOLUTION[0], RESOLUTION[1]
@@ -123,7 +122,6 @@ def init_ui():
     
     settings_jukku_btn = Button(s_w//2 - int(195*s), s_h * 0.72, btn_w_large, btn_h_large, "주꾸다시 (자폭)", DARK_RED)
     settings_quit_btn = Button(s_w//2 - int(195*s), s_h * 0.82, btn_w_large, btn_h_large, "메인 메뉴로 이동", GRAY)
-    settings_cheat_btn = Button(s_w//2 + int(10*s), s_h * 0.72, int(150*s), int(50*s), "치트: 끄기", GRAY) # 동적으로 텍스트 변경
     
     settings_back_btn.rect.y = int(s_h * 0.88)
     settings_save_btn.rect.y = int(s_h * 0.88)
@@ -693,11 +691,6 @@ def main(skip_intro=False):
                         if new_nick is not None: NICKNAME = new_nick
                     elif settings_jukku_btn.rect.collidepoint(mx, my): gm.jukku_confirm_open = True
                     elif settings_quit_btn.rect.collidepoint(mx, my): gm.mode = STATE_MAIN_MENU
-                    
-                    # 치트 버튼 이벤트 (온라인이 아닐 때만)
-                    elif not gm.is_online and settings_cheat_btn.rect.collidepoint(mx, my):
-                        CHEAT_MODE = not CHEAT_MODE; mte_config.CHEAT_MODE = CHEAT_MODE
-                        gm.save_confirm_open = True
 
             if event.type == pygame.MOUSEBUTTONUP: gm.is_dragging_shop = False
             if event.type == pygame.MOUSEMOTION:
@@ -965,13 +958,7 @@ def main(skip_intro=False):
             draw_setting_item(s_h * 0.60, "닉네임", NICKNAME, settings_nickname_btn, Button(0,0,0,0,"",BLACK))
             settings_nickname_btn.draw(display_surface)
 
-            # 치트 버튼 (온라인이 아닐 때만)
-            if not gm.is_online:
-                settings_cheat_btn.text = f"치트: {'ON' if CHEAT_MODE else 'OFF'}"
-                settings_cheat_btn.color = GREEN if CHEAT_MODE else GRAY
-                settings_cheat_btn.rect.centerx = s_w//2 + int(100*s) # 위치 조정
-                settings_cheat_btn.rect.y = s_h * 0.68
-                settings_cheat_btn.draw(display_surface)
+
 
             settings_jukku_btn.draw(display_surface); settings_quit_btn.draw(display_surface)
             settings_back_btn.draw(display_surface)

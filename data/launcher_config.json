@@ -2,11 +2,11 @@
     "skip_launcher": true,
     "skip_map_select": true,
     "skip_intro_screen": true,
-    "cheat_mode": true,
-    "bgm_volume": 0.0,
-    "sfx_volume": 0.0,
+    "cheat_mode": false,
+    "bgm_volume": 0.3,
+    "sfx_volume": 0.4,
     "display_mode": 0,
-    "server_ip": "[IP_ADDRESS]",
+    "server_ip": "127.0.0.1",
     "server_port": 20318,
     "nickname": "trick_call"
 }
