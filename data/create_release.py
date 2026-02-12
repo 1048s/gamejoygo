@@ -129,9 +129,9 @@ class ReleaseManager:
             if self.var_git_push.get():
                 self.lbl_status.config(text="Git Push 중...")
                 self.root.update()
-                subprocess.run(["git", "add", "version.py"], check=True)
-                subprocess.run(["git", "commit", "-m", f"Release {new_ver}"], check=True)
-                subprocess.run(["git", "push", "origin", TARGET_BRANCH], check=True)
+                subprocess.run(["git", "add", "version.py"], check=True, cwd=self.script_dir)
+                subprocess.run(["git", "commit", "-m", f"Release {new_ver}"], check=True, cwd=self.script_dir)
+                subprocess.run(["git", "push", "origin", TARGET_BRANCH], check=True, cwd=self.script_dir)
 
             # 3. GitHub Release 생성
             self.lbl_status.config(text="GitHub Release 생성 중...")

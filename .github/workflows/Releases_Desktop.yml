@@ -47,12 +47,17 @@ jobs:
         shell: bash
         run: |
           # Dynamically build --add-data arguments based on existing directories
-          ADD_DATA_ARGS=""
+          # data 폴더 내부 리소스
           for folder in image sound font; do
-            if [ -d "$folder" ]; then
-              ADD_DATA_ARGS="$ADD_DATA_ARGS --add-data $folder${{ matrix.sep }}$folder"
+            if [ -d "data/$folder" ]; then
+              ADD_DATA_ARGS="$ADD_DATA_ARGS --add-data data/$folder${{ matrix.sep }}$folder"
             fi
           done
+
+          # 루트 디렉터리 리소스 (maps 등)
+          if [ -d "maps" ]; then
+            ADD_DATA_ARGS="$ADD_DATA_ARGS --add-data maps${{ matrix.sep }}maps"
+          fi
 
           python -m PyInstaller ${{ matrix.mode }} --noconsole \
             --name "${{ matrix.artifact_name }}" \
